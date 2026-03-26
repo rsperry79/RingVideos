@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.CommandLine;
-using System.CommandLine.Parsing;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -28,7 +27,7 @@ namespace RingVideos
       private static StartArgs sArgs;
       private static IConfiguration config;
       private static CommandHelper cmdHelper;
-      private static Parser rootParser;
+      private static RootCommand rootCommand;
       private static ConsoleWriter cw;
 
       public Worker(ILogger<Worker> log, IConfiguration config, RingVideoApplication ringApp,  StartArgs sArgs, CommandHelper cmdHelper, ConsoleWriter  consoleWriter)
@@ -46,7 +45,7 @@ namespace RingVideos
 
          try
          {
-            rootParser = cmdHelper.SetupCommands();
+            rootCommand = cmdHelper.SetupCommands();
             bool showFilter = false;
             if (Worker.sArgs.Args.Length == 0)
             {
@@ -54,7 +53,7 @@ namespace RingVideos
                showFilter = true;
             }
 
-            int val = await rootParser.InvokeAsync(Worker.sArgs.Args);
+            int val = await rootCommand.Parse(Worker.sArgs.Args).InvokeAsync();
             //if (showFilter)
             //{
             //   ringApp.FilterMessage("Saved filter settings (use command flags to override):");
@@ -80,7 +79,7 @@ namespace RingVideos
 
                try
                {
-                  val = await rootParser.InvokeAsync(line);
+                  val = await rootCommand.Parse(line).InvokeAsync();
                   //if (showFilter)
                   //{
                   //   ringApp.FilterMessage("Saved filter settings (use command flags to override):");
@@ -228,7 +227,7 @@ namespace RingVideos
          return true;
       }
 
-      internal static void ShowLog(object t)
+      internal static void ShowLog()
       {
          var folder = Path.GetDirectoryName(Program.logFileBaseName);
          var fileRoot = Path.GetFileNameWithoutExtension(Program.logFileBaseName);

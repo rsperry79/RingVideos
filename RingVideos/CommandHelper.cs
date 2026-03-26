@@ -1,11 +1,9 @@
 ﻿using Spectre.Console;
 using System;
 using System.CommandLine;
-using System.CommandLine.Builder;
-using System.CommandLine.Help;
-using System.CommandLine.NamingConventionBinder;
 using System.CommandLine.Parsing;
-using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 
 namespace RingVideos
@@ -17,43 +15,80 @@ namespace RingVideos
 
       }
 
-      public Parser SetupCommands()
+      public RootCommand SetupCommands()
       {
-         var startOption = new Option<DateTime>(new string[] { "--start", "-s" }, () => DateTime.MinValue, "Start time (earliest videos to download)");
-         var endOption = new Option<DateTime>(new string[] { "--end", "-e" }, () => DateTime.MaxValue, "End time (latest videos to download)");
-         var pathOption = new Option<string>(new string[] { "--path" },  "Path to save videos to");
-         var passwordOption = new Option<string>(new string[] { "--password", "-p" }, "Ring account password");
-         var userNameOption = new Option<string>(new string[] { "--username", "-u" }, "Ring account username");
-         var starredOption = new Option<bool>(new string[] { "--starred" }, () => false, "Flag to only download Starred videos");
-         var maxcountOption = new Option<int>(new string[] { "--maxcount", "-m" }, () => 1000, "Maximum number of videos to download");
-         var deviceIdOption = new Option<long>(new string[] { "--device-id", "--id" },  "Device ID to download videos from. (Use command `devices` to get the available list)");
-         //var debugLogOption = new Option<bool>(new string[] { "-d", "--debug" }, "Debug log option flag");
-         //var traceLogOption = new Option<bool>(new string[] { "-t", "--trace" }, "Trace log option flag");
-         var exitAppOption = new Option<bool>(new string[] { "-x", "--exit" }, "Option to close app after running command (vs. keeping open). This could be useful in using in automated scripting. ");
-         ;
+         var startOption = new Option<DateTime>("--start", "-s") { Description = "Start time (earliest videos to download)", DefaultValueFactory = _ => DateTime.MinValue };
+         var endOption = new Option<DateTime>("--end", "-e") { Description = "End time (latest videos to download)", DefaultValueFactory = _ => DateTime.MaxValue };
+         var pathOption = new Option<string>("--path") { Description = "Path to save videos to" };
+         var passwordOption = new Option<string>("--password", "-p") { Description = "Ring account password" };
+         var userNameOption = new Option<string>("--username", "-u") { Description = "Ring account username" };
+         var maxcountOption = new Option<int>("--maxcount", "-m") { Description = "Maximum number of videos to download", DefaultValueFactory = _ => 1000 };
+         var deviceIdOption = new Option<long>("--device-id", "--id") { Description = "Device ID to download videos from. (Use command `devices` to get the available list)" };
+         var exitAppOption = new Option<bool>("-x", "--exit") { Description = "Option to close app after running command (vs. keeping open). This could be useful in using in automated scripting." };
+
          RootCommand rootCommand = new RootCommand(description: "Simple command line tool to download videos from your Ring account");
 
          var starCommand = new Command("starred", "Download only starred videos");
-         starCommand.Handler = CommandHandler.Create<string, string, string, DateTime, DateTime, int, long?>(Worker.GetStarredVideos);
+         starCommand.SetAction(async (parseResult, ct) =>
+         {
+            return await Worker.GetStarredVideos(
+               parseResult.GetValue(userNameOption),
+               parseResult.GetValue(passwordOption),
+               parseResult.GetValue(pathOption),
+               parseResult.GetValue(startOption),
+               parseResult.GetValue(endOption),
+               parseResult.GetValue(maxcountOption),
+               GetNullableLong(parseResult, deviceIdOption));
+         });
 
          var allCommand = new Command("all", "Download all videos (starred and unstarred)");
-         allCommand.Handler = CommandHandler.Create<string, string, string, DateTime, DateTime, int, long?>(Worker.GetAllVideos);
+         allCommand.SetAction(async (parseResult, ct) =>
+         {
+            return await Worker.GetAllVideos(
+               parseResult.GetValue(userNameOption),
+               parseResult.GetValue(passwordOption),
+               parseResult.GetValue(pathOption),
+               parseResult.GetValue(startOption),
+               parseResult.GetValue(endOption),
+               parseResult.GetValue(maxcountOption),
+               GetNullableLong(parseResult, deviceIdOption));
+         });
 
          var snapshotCommand = new Command("snapshot", "Download only snapshot images");
-         snapshotCommand.Handler = CommandHandler.Create<string, string, string, DateTime, DateTime, long?>(Worker.GetSnapshotImages);
+         snapshotCommand.SetAction(async (parseResult, ct) =>
+         {
+            return await Worker.GetSnapshotImages(
+               parseResult.GetValue(userNameOption),
+               parseResult.GetValue(passwordOption),
+               parseResult.GetValue(pathOption),
+               parseResult.GetValue(startOption),
+               parseResult.GetValue(endOption),
+               GetNullableLong(parseResult, deviceIdOption));
+         });
 
          var showLogCommand = new Command("showlog", "Open the log file");
-         showLogCommand.Handler = CommandHandler.Create(Worker.ShowLog);
+         showLogCommand.SetAction((parseResult) =>
+         {
+            Worker.ShowLog();
+         });
 
          var deviceListCommand = new Command("devices", "Get list of devices and their ID values");
          deviceListCommand.Add(userNameOption);
          deviceListCommand.Add(passwordOption);
-         deviceListCommand.Handler = CommandHandler.Create<string, string>(Worker.DeviceList);
+         deviceListCommand.SetAction(async (parseResult, ct) =>
+         {
+            await Worker.DeviceList(
+               parseResult.GetValue(userNameOption),
+               parseResult.GetValue(passwordOption));
+         });
 
          var quitCommand = new Command("quit", "Quit/close the application");
-         quitCommand.AddAlias("exit");
-         quitCommand.AddAlias("q");
-         quitCommand.Handler = CommandHandler.Create(Worker.QuitApplication);
+         quitCommand.Aliases.Add("exit");
+         quitCommand.Aliases.Add("q");
+         quitCommand.SetAction((parseResult) =>
+         {
+            Worker.QuitApplication();
+         });
 
          rootCommand.Add(starCommand);
          rootCommand.Add(allCommand);
@@ -62,8 +97,6 @@ namespace RingVideos
          rootCommand.Add(deviceListCommand);
          rootCommand.Add(exitAppOption);
          rootCommand.Add(quitCommand);
-         //rootCommand.AddOption(debugLogOption);
-         //rootCommand.AddOption(traceLogOption);
 
          starCommand.Add(userNameOption);
          starCommand.Add(passwordOption);
@@ -88,18 +121,19 @@ namespace RingVideos
          snapshotCommand.Add(endOption);
          snapshotCommand.Add(deviceIdOption);
 
-         var parser = new CommandLineBuilder(rootCommand)
-                .UseDefaults()
-                .UseTypoCorrections().UseHelp(ctx =>
-                {
-                   ctx.HelpBuilder.CustomizeLayout(_ => HelpBuilder.Default
-                                      .GetLayout()
-                                      .Prepend(
-                                          _ => AnsiConsole.Write(new FigletText("Ring Videos"))));
-                                      }).Build();
-
-         return parser;
+         return rootCommand;
       }
 
+      /// <summary>
+      /// Returns null when the device-id option was not specified (value is default 0), otherwise returns the parsed value.
+      /// </summary>
+      private static long? GetNullableLong(ParseResult parseResult, Option<long> option)
+      {
+         var result = parseResult.GetResult(option);
+         if (result is null)
+            return null;
+
+         return parseResult.GetValue(option);
+      }
     }
 }
