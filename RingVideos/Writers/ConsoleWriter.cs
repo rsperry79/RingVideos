@@ -135,22 +135,18 @@ namespace RingVideos.Writers
       public void Warning(string message)
       {
          WriteMessage(message, MessageType.Warning);
-         log.LogWarning(message);
       }
       public void Highlight(string message)
       {
          WriteMessage(message, MessageType.Highlight);
-         log.LogInformation(message);
       }
       public void Info(string message)
       {
          WriteMessage(message);
-         log.LogInformation(message);
       }
       public void Error(string message)
       {
          WriteMessage(message, MessageType.Error);
-         log.LogError(message);
       }
       public LineWriter GetLineWriter()
       {
@@ -237,7 +233,6 @@ namespace RingVideos.Writers
 
             Console.Write(message.PadRight(lw.InitialStatusLength));
             Console.ResetColor();
-            log.LogInformation($"{lw.InitialMessage}  {message}");
          }
          finally
          {
@@ -278,7 +273,6 @@ namespace RingVideos.Writers
                Console.ForegroundColor = ConsoleColor.Cyan;
                Console.Write(message.PadRight(Console.WindowWidth - 1));
                Console.ResetColor();
-               log.LogInformation($"Status: {message}");
             }
          }
          finally
