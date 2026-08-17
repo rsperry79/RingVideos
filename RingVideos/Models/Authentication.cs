@@ -132,7 +132,6 @@ namespace RingVideos.Models
             }
             catch(Exception)
             {
-                this.ClearTextPassword = this.Password;
                 return this;
             }
 

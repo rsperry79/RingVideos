@@ -137,6 +137,10 @@ namespace RingVideos.Writers
             //Console.Write(new string(' ', Console.WindowWidth));
             if(lw.LinePosition < 0) lw.LinePosition = 0;
             Console.SetCursorPosition(0, lw.LinePosition);
+            if (message.Length > lw.InitialStatusLength)
+            {
+               lw.InitialStatusLength = message.Length;
+            }
             Console.Write($"{lw.InitialMessage}  ");
             switch (msgType)
             {
@@ -161,7 +165,7 @@ namespace RingVideos.Writers
                   break;
             }
 
-            Console.Write(message);
+            Console.Write(message.PadRight(lw.InitialStatusLength));
             Console.ResetColor();
             log.LogInformation($"{lw.InitialMessage}  {message}");
          }

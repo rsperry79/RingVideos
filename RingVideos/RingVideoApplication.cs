@@ -31,6 +31,7 @@ namespace RingVideos
       private readonly ILogger log;
       private Session ringSession;
       private static SemaphoreSlim semaphore = new SemaphoreSlim(3, 5);
+      private static readonly System.Text.Json.JsonSerializerOptions CachedJsonOptions = new() { WriteIndented = true };
       public Filter Filter { get; set; } = new();
       public Authentication Auth { get; set; } = new();
       IConfiguration config;
@@ -107,7 +108,7 @@ namespace RingVideos
             Authentication = this.Auth,
             Filter = this.Filter
          };
-         var config = JsonSerializer.Serialize(conf, new JsonSerializerOptions() { WriteIndented = true});
+         var config = JsonSerializer.Serialize(conf, CachedJsonOptions);
 
          System.IO.File.WriteAllText(this.SavedSettingsFile, config);
       }
