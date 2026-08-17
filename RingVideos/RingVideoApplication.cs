@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using RingVideos.Models;
+using RingVideos.Logging;
 using System;
 using System.IO;
 using System.Threading.Tasks;
@@ -8,7 +9,6 @@ using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Text;
-using Newtonsoft.Json.Serialization;
 using KoenZomers.Ring.Api;
 using MoreLinq;
 using System.Collections.Generic;
@@ -36,7 +36,6 @@ namespace RingVideos
       private static long totalBytesDownloaded = 0;
       private static DateTime downloadStartTime = DateTime.Now;
       private static CancellationTokenSource speedUpdateCancellation;
-      private static readonly System.Text.Json.JsonSerializerOptions CachedJsonOptions = new() { WriteIndented = true };
       public Filter Filter { get; set; } = new();
       public Authentication Auth { get; set; } = new();
       IConfiguration config;
@@ -122,10 +121,10 @@ namespace RingVideos
             Authentication = this.Auth,
             Filter = this.Filter
          };
-         var config = JsonSerializer.Serialize(conf, CachedJsonOptions);
+         var config = JsonUtil.Serialize(conf, JsonMode.Pretty);
 
          System.IO.File.WriteAllText(this.SavedSettingsFile, config);
-         cw.Info($"Settings saved to {this.SavedSettingsFile}");
+         log.LogInformation("Settings saved to {settingsFile}", this.SavedSettingsFile);
          log.LogInformation($"Saved refresh token (length: {Auth.ClearTextRefreshToken?.Length ?? 0})");
       }
 
@@ -134,10 +133,6 @@ namespace RingVideos
       /// directory, so the full request/response traffic can be inspected for missing fields,
       /// undocumented endpoints, or data our entity classes don't currently map.
       /// </summary>
-      private static readonly System.Text.Json.JsonSerializerOptions RawApiLogJsonOptions = new()
-      {
-         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-      };
       private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
 
       private void LogRawApiCall(KoenZomers.Ring.Api.RawApiCall call)
@@ -156,12 +151,13 @@ namespace RingVideos
                bodyLength = call.Body?.Length ?? 0,
                body = call.Body
             };
-            var line = JsonSerializer.Serialize(entry, RawApiLogJsonOptions);
+            var line = JsonUtil.Serialize(entry, JsonMode.Raw);
 
             var logPath = Path.Combine(logsDirectory, "api_raw_responses.jsonl");
             lock (rawApiLogLock)
             {
                System.IO.File.AppendAllText(logPath, line + Environment.NewLine, Utf8NoBom);
+               log.LogInformation("RawApiResponse {method} {url} {statusCode}", entry.method, entry.url, entry.statusCode);
             }
          }
          catch (Exception exe)
@@ -214,9 +210,10 @@ namespace RingVideos
             var filePath = Path.Combine(logsDirectory, fileName);
 
             using var doc = JsonDocument.Parse(batch.EventsJson);
-            var pretty = JsonSerializer.Serialize(doc, new JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
+            var pretty = JsonUtil.Serialize(doc, JsonMode.Pretty);
 
             System.IO.File.WriteAllText(filePath, pretty, Utf8NoBom);
+            log.LogInformation("RingEventsBatch {fileName} written", Path.GetFileName(filePath));
          }
          catch (Exception exe)
          {
@@ -323,13 +320,17 @@ namespace RingVideos
                // Two factor authentication is enabled on the account. The above Authenticate() will trigger a text message to be sent. Ask for the token sent in that message here.
                cw.Info($"Two factor authentication enabled on this account, please enter the token received in the text message on your phone:");
                var token = Console.ReadLine();
+               if (!string.IsNullOrEmpty(token))
+               {
+                  log.LogInformation("2FA token received");
+               }
 
                // Authenticate again using the two factor token
                await session.Authenticate(twoFactorAuthCode: token);
             }
             catch (KoenZomers.Ring.Api.Exceptions.ThrottledException e)
             {
-               Console.WriteLine(e.Message);
+               cw.Error(e.Message);
             }
             catch (KoenZomers.Ring.Api.Exceptions.AuthenticationFailedException e)
             {
@@ -357,7 +358,7 @@ namespace RingVideos
       {
          try
          {
-            Console.Clear();
+            log.LogInformation("Starting download run");
          }
          catch (IOException)
          {
@@ -974,13 +975,10 @@ namespace RingVideos
             var fileName = $"{safeCameraName}-{date}-T{time}-{ding.Kind}.json";
             var filePath = Path.Combine(logsDirectory, fileName);
 
-            var json = JsonSerializer.Serialize(ding, new JsonSerializerOptions
-            {
-               WriteIndented = true,
-               Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-            });
+            var json = JsonUtil.Serialize(ding, JsonMode.Pretty);
 
             System.IO.File.WriteAllText(filePath, json, Utf8NoBom);
+            log.LogInformation("PerEventJson {fileName} written", Path.GetFileName(filePath));
          }
          catch (Exception exe)
          {

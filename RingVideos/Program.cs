@@ -8,6 +8,7 @@ using System.Linq;
 using Serilog;
 using Serilog.Events;
 using RingVideos.Writers;
+using RingVideos.Logging;
 
 namespace RingVideos
 {
@@ -30,14 +31,8 @@ namespace RingVideos
           .Build();
 
          // Configure Serilog
-         var loggerConfig = new LoggerConfiguration()
-             .ReadFrom.Configuration(Configuration)
-             .WriteTo.File(logFileBaseName, rollingInterval: RollingInterval.Day);
-
-         if (minimumLevel.HasValue)
-         {
-            loggerConfig = loggerConfig.MinimumLevel.Is(minimumLevel.Value);
-         }
+         var loggerConfig = LoggerFactory.GetDefaultConfiguration(minimumLevel ?? LogEventLevel.Information)
+             .ReadFrom.Configuration(Configuration);
 
          Log.Logger = loggerConfig.CreateLogger();
 

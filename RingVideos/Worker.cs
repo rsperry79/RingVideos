@@ -67,10 +67,12 @@ namespace RingVideos
                   break;
                }
                ringApp.FilterMessage("Saved filter settings (use command flags to override):");
-               Console.ForegroundColor = ConsoleColor.White;
-               Console.WriteLine();
-               Console.Write("RingVideos> ");
+               log.LogInformation("RingVideos> "); // Log prompt for audit trail
                var line = Console.ReadLine();
+               if (!string.IsNullOrEmpty(line))
+               {
+                  log.LogInformation("UserInput: {command}", line);
+               }
 
                if (line == null)
                {
@@ -213,7 +215,7 @@ namespace RingVideos
             }
             else
             {
-               Console.WriteLine("A Ring username is required");
+               cw.Error("A Ring username is required");
                return false;
             }
          }
@@ -226,7 +228,7 @@ namespace RingVideos
             }
             else
             {
-               Console.WriteLine("A Ring password is required");
+               cw.Error("A Ring password is required");
                return false;
             }
          }

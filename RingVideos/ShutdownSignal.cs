@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using Serilog;
 
 namespace RingVideos
 {
@@ -21,8 +22,7 @@ namespace RingVideos
             if (Cts.IsCancellationRequested)
             {
                // Second Ctrl+C - the user wants out now
-               Console.WriteLine();
-               Console.WriteLine("Force quitting...");
+               Log.Warning("Force quitting...");
                Environment.Exit(130);
                return;
             }
@@ -31,12 +31,12 @@ namespace RingVideos
 
             if (RingVideoApplication.IsRunActive)
             {
-               Console.WriteLine();
-               Console.WriteLine("Ctrl+C received - finishing in-flight downloads and saving progress... (press Ctrl+C again to force quit)");
+               Log.Information("Ctrl+C received - finishing in-flight downloads and saving progress... (press Ctrl+C again to force quit)");
             }
             else
             {
                // Idle at the REPL prompt - nothing in-flight to protect, exit immediately
+               Log.Information("Shutdown requested - no active run");
                Environment.Exit(0);
             }
          };
