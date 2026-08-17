@@ -50,7 +50,7 @@ namespace RingVideos.Models
                         {
 
                             csEncrypt.Write(clearTextBytes, 0, clearTextBytes.Length);
-                            csEncrypt.Close();
+                            csEncrypt.FlushFinalBlock();
                             var encrBytes = msEncrypt.ToArray();
                             this.Password = Convert.ToBase64String(encrBytes);
                         }
@@ -64,7 +64,7 @@ namespace RingVideos.Models
                         {
 
                             csEncrypt.Write(clearTextBytes, 0, clearTextBytes.Length);
-                            csEncrypt.Close();
+                            csEncrypt.FlushFinalBlock();
                             var encrBytes = msEncrypt.ToArray();
                             this.RefreshToken = Convert.ToBase64String(encrBytes);
                         }

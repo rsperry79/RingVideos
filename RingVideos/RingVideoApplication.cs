@@ -47,8 +47,9 @@ namespace RingVideos
          {
             ReadSettings();
          }
-         catch(Exception)
+         catch(Exception exe)
          {
+            log.LogError(exe, "Failed to load saved settings");
             cw.Warning("Failed to load saved settings");
          }
       }
@@ -388,7 +389,8 @@ namespace RingVideos
 
                results = (await Task.WhenAll(tasks.ToArray())).ToList();
                var success = results.Count(r => r.success == true);
-               lastSuccess = results.ToList().Where(r => r.success == true)?.Select(r => r.ding.CreatedAtDateTime).Max();
+               var successfulCreatedDates = results.Where(r => r.success == true).Select(r => r.ding.CreatedAtDateTime).ToList();
+               lastSuccess = successfulCreatedDates.Any() ? successfulCreatedDates.Max() : null;
                failedCount = results.Count(r => r.success == false);
                cw.Highlight($"{Environment.NewLine}Successfully downloaded {success} videos");
               
@@ -402,11 +404,14 @@ namespace RingVideos
             if(failedCount > 0)
             {
                cw.Error($"{Environment.NewLine}Failed to download {failedCount} videos.");
-               firstFailure = results.ToList().Where(r => r.success == false)?.Select(r => r.ding.CreatedAtDateTime).Min();
-               TimeZoneInfo.Local.GetUtcOffset(firstFailure.Value);
-               var est = firstFailure.Value.ToLocalTime();
-               cw.Warning($"Date of first failed download recorded ({est}). Rerun without a --start value to retry the downloads starting at that point");
-
+               var failedCreatedDates = results.Where(r => r.success == false).Select(r => r.ding.CreatedAtDateTime).ToList();
+               firstFailure = failedCreatedDates.Any() ? failedCreatedDates.Min() : null;
+               if (firstFailure.HasValue)
+               {
+                  TimeZoneInfo.Local.GetUtcOffset(firstFailure.Value);
+                  var est = firstFailure.Value.ToLocalTime();
+                  cw.Warning($"Date of first failed download recorded ({est}). Rerun without a --start value to retry the downloads starting at that point");
+               }
             }
 
             cw.Info($"{Environment.NewLine}Done!");
@@ -468,7 +473,7 @@ namespace RingVideos
       {
 
          LineWriter lw = cw.GetLineWriter();
-         semaphore.Wait();
+         await semaphore.WaitAsync();
          try
          {
             
@@ -502,8 +507,11 @@ namespace RingVideos
                   if (e.InnerException != null && e.InnerException.GetType() == typeof(System.Net.WebException) && ((System.Net.WebException)e.InnerException).Response != null)
                   {
                      var webException = (System.Net.WebException)e.InnerException;
-                     var response = new StreamReader(webException.Response.GetResponseStream()).ReadToEnd();
-
+                     string response;
+                     using (var streamReader = new StreamReader(webException.Response.GetResponseStream()))
+                     {
+                        response = streamReader.ReadToEnd();
+                     }
                      cw.UpdateError(lw, $"Failed: ({(e.InnerException != null ? e.InnerException.Message : e.Message)} - {response})");
                   }
                   else
