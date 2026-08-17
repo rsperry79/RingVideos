@@ -86,6 +86,7 @@ namespace RingVideos
                 services.AddSingleton<Filter>();
                 services.AddSingleton<Authentication>();
                 //services.AddSingleton<ConsoleFormatter, CustomConsoleFormatter>();
+                services.AddSingleton<Writers.IConsole, Writers.SystemConsole>();
                 services.AddSingleton<ConsoleWriter>();
 
                 // Give a Ctrl+C-interrupted run enough time to finish in-flight downloads and

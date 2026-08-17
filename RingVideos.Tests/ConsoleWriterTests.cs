@@ -6,14 +6,110 @@ namespace RingVideos.Tests;
 
 public class ConsoleWriterTests
 {
-    [Fact(Skip = "ConsoleWriter requires actual console which is not available in test environment")]
+    private static ConsoleWriter CreateWriter(FakeConsole console)
+    {
+        var mockLogger = new Mock<ILogger<ConsoleWriter>>();
+        return new ConsoleWriter(mockLogger.Object, console);
+    }
+
+    [Fact]
     public void ConsoleWriterCanBeCreated()
     {
-        // ConsoleWriter initializes footer on construction, which requires an actual console
-        // This test is skipped in test environment but would pass if run interactively
-        var mockLogger = new Mock<ILogger<ConsoleWriter>>();
-        var writer = new ConsoleWriter(mockLogger.Object);
+        // FakeConsole means this no longer needs a real terminal to construct.
+        var console = new FakeConsole { BufferHeight = 30 };
+        var writer = CreateWriter(console);
         Assert.NotNull(writer);
+    }
+
+    [Fact]
+    public void FooterStatus_WritesToLastRowOfBuffer()
+    {
+        var console = new FakeConsole { BufferHeight = 30, WindowWidth = 80 };
+        var writer = CreateWriter(console);
+
+        writer.UpdateFooterStatus("Active Downloads: 5");
+
+        Assert.True(console.RowContents.ContainsKey(29), "Footer status should be on the last buffer row.");
+        Assert.Contains("Active Downloads: 5", console.RowContents[29]);
+    }
+
+    [Fact]
+    public void FooterStatus_OverwritesSameRowAcrossRepeatedCalls()
+    {
+        // This is the "static speed bar" expectation: repeated status updates with no
+        // intervening download rows must land on the same row every time, not stack up
+        // as new lines.
+        var console = new FakeConsole { BufferHeight = 30, WindowWidth = 80 };
+        var writer = CreateWriter(console);
+
+        writer.UpdateFooterStatus("Speed: 1.0 MB/s");
+        writer.UpdateFooterStatus("Speed: 2.0 MB/s");
+        writer.UpdateFooterStatus("Speed: 3.0 MB/s");
+
+        // Only row 29 (and the row 28 separator it also touches) should ever have been written to.
+        Assert.Equal(new[] { 28, 29 }, console.RowContents.Keys.OrderBy(k => k));
+        Assert.Contains("Speed: 3.0 MB/s", console.RowContents[29]);
+        Assert.DoesNotContain("Speed: 1.0 MB/s", console.RowContents[29]);
+    }
+
+    [Fact]
+    public void EnsureBufferHeight_GrowsBufferAndRecomputesFooterRow()
+    {
+        var console = new FakeConsole { BufferHeight = 30, WindowWidth = 80 };
+        var writer = CreateWriter(console);
+
+        writer.EnsureBufferHeight(200); // needs 220 rows, exceeds 30
+
+        Assert.Equal(220, console.BufferHeight);
+
+        writer.UpdateFooterStatus("after growth");
+
+        // Footer should follow the new buffer height (219), not the original (29).
+        Assert.True(console.RowContents.ContainsKey(219));
+        Assert.Contains("after growth", console.RowContents[219]);
+    }
+
+    [Fact]
+    public void EnsureBufferHeight_NoOpWhenBufferAlreadyLargeEnough()
+    {
+        var console = new FakeConsole { BufferHeight = 500, WindowWidth = 80 };
+        var writer = CreateWriter(console);
+
+        writer.EnsureBufferHeight(10); // needs only 30, buffer already 500
+
+        Assert.Equal(500, console.BufferHeight);
+    }
+
+    [Fact]
+    public void GetLineWriter_ScrollCompensation_KeepsFooterPositionInSyncWithLineWriters()
+    {
+        // Regression test for the bug reported live: with enough download rows to reach
+        // the bottom of the buffer, GetLineWriter's scroll-compensation branch shifted every
+        // tracked LineWriter up by one row but left the footer's tracked row untouched. Each
+        // time that fired, the footer drifted further from where it actually rendered, so the
+        // "status bar" appeared as a new line instead of overwriting in place.
+        var console = new FakeConsole { BufferHeight = 10, WindowWidth = 80 };
+        var writer = CreateWriter(console);
+        // Footer rows are 8 (separator) and 9 (status) at this buffer height.
+
+        // Existing content row, well clear of the bottom.
+        console.SetCursorPosition(0, 4);
+        var firstRow = writer.GetLineWriter();
+        Assert.Equal(5, firstRow.LinePosition);
+
+        // Put the cursor exactly where GetLineWriter's scroll-compensation check fires
+        // (BufferHeight - 3 == CursorTop, i.e. one row before the footer separator).
+        console.SetCursorPosition(0, 7);
+        writer.GetLineWriter();
+
+        // The pre-existing row should have shifted up by one, matching what a real scroll does...
+        Assert.Equal(4, firstRow.LinePosition);
+
+        // ...and the footer must have shifted by the same amount, or its next write lands on a
+        // stale row instead of overwriting the visible footer.
+        writer.UpdateFooterStatus("still static");
+        Assert.True(console.RowContents.ContainsKey(8), "Footer status should have shifted to row 8, not stayed at 9.");
+        Assert.Contains("still static", console.RowContents[8]);
     }
 
     [Fact]

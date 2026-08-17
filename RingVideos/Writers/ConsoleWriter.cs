@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using System;
 using System.IO;
 using System.Linq;
@@ -9,14 +9,20 @@ namespace RingVideos.Writers
    public class ConsoleWriter
    {
       private ILogger<ConsoleWriter> log;
+      private IConsole console;
       private object lockObj = new object();
       private ThreadSafeList<LineWriter> lineWriters;
       private int footerStatusLinePosition = -1;
       private int footerSeparatorLinePosition = -1;
 
-      public ConsoleWriter(ILogger<ConsoleWriter> log)
+      public ConsoleWriter(ILogger<ConsoleWriter> log) : this(log, new SystemConsole())
+      {
+      }
+
+      public ConsoleWriter(ILogger<ConsoleWriter> log, IConsole console)
       {
          this.log = log;
+         this.console = console;
          lineWriters = new ThreadSafeList<LineWriter>();
          InitializeFooter();
       }
@@ -26,16 +32,16 @@ namespace RingVideos.Writers
          try
          {
             Monitor.Enter(lockObj);
-            footerStatusLinePosition = Console.BufferHeight - 1;
-            footerSeparatorLinePosition = Console.BufferHeight - 2;
+            footerStatusLinePosition = console.BufferHeight - 1;
+            footerSeparatorLinePosition = console.BufferHeight - 2;
 
             // Write separator line
-            Console.SetCursorPosition(0, footerSeparatorLinePosition);
-            Console.WriteLine();
+            console.SetCursorPosition(0, footerSeparatorLinePosition);
+            console.WriteLine();
 
             // Write empty status line
-            Console.SetCursorPosition(0, footerStatusLinePosition);
-            Console.WriteLine();
+            console.SetCursorPosition(0, footerStatusLinePosition);
+            console.WriteLine();
          }
          finally
          {
@@ -57,20 +63,20 @@ namespace RingVideos.Writers
             Monitor.Enter(lockObj);
 
             var needed = Math.Min(expectedLineCount + 20, short.MaxValue - 1);
-            if (Console.BufferHeight >= needed)
+            if (console.BufferHeight >= needed)
                return;
 
-            Console.SetBufferSize(Console.BufferWidth, needed);
+            console.SetBufferSize(console.BufferWidth, needed);
 
             // Footer position depends on buffer height - recompute and redraw without triggering
             // a scroll (avoid WriteLine at the last row, which would itself push the buffer up by one).
-            footerStatusLinePosition = Console.BufferHeight - 1;
-            footerSeparatorLinePosition = Console.BufferHeight - 2;
+            footerStatusLinePosition = console.BufferHeight - 1;
+            footerSeparatorLinePosition = console.BufferHeight - 2;
 
-            Console.SetCursorPosition(0, footerSeparatorLinePosition);
-            Console.Write(new string(' ', Console.BufferWidth - 1));
-            Console.SetCursorPosition(0, footerStatusLinePosition);
-            Console.Write(new string(' ', Console.BufferWidth - 1));
+            console.SetCursorPosition(0, footerSeparatorLinePosition);
+            console.Write(new string(' ', console.BufferWidth - 1));
+            console.SetCursorPosition(0, footerStatusLinePosition);
+            console.Write(new string(' ', console.BufferWidth - 1));
          }
          catch (Exception ex) when (ex is IOException || ex is ArgumentOutOfRangeException || ex is System.Security.SecurityException)
          {
@@ -91,25 +97,25 @@ namespace RingVideos.Writers
             switch (msgType)
             {
                case MessageType.Highlight:
-                  Console.ForegroundColor = ConsoleColor.Cyan;
+                  console.ForegroundColor = ConsoleColor.Cyan;
                   break;
                case MessageType.Warning:
-                  Console.ForegroundColor = ConsoleColor.Yellow;
+                  console.ForegroundColor = ConsoleColor.Yellow;
                   break;
                case MessageType.Error:
-                  Console.ForegroundColor = ConsoleColor.Red;
+                  console.ForegroundColor = ConsoleColor.Red;
                   break;
                case MessageType.Info:
                default:
-                  Console.ResetColor();
+                  console.ResetColor();
                   break;
             }
             if (maxLine > 0)
             {
-               Console.SetCursorPosition(0, maxLine);
+               console.SetCursorPosition(0, maxLine);
             }
-            Console.WriteLine(message);
-            Console.ResetColor();
+            console.WriteLine(message);
+            console.ResetColor();
          }
          finally
          {
@@ -159,20 +165,26 @@ namespace RingVideos.Writers
          try
          {
             Monitor.Enter(lockObj);
-            if (Console.BufferHeight - 3 == Console.CursorTop)
+            if (console.BufferHeight - 3 == console.CursorTop)
             {
-               if (Console.BufferHeight - 3 == Console.CursorTop)
-               {
-                  lineWriters.ForEach(l => l.LinePosition--);
-               }
+               // A WriteLine() below would push the cursor onto the footer's separator row
+               // (i.e. a scroll is about to happen). Every previously recorded absolute row -
+               // including the footer's own two rows - shifts up by one when that happens, so
+               // keep footerStatusLinePosition/footerSeparatorLinePosition in sync with the
+               // lineWriters we're compensating below. Missing this was the cause of the footer
+               // "status bar" drifting off its row and reappearing as a fresh line on every
+               // update once a run had enough rows to reach the bottom of the buffer.
+               lineWriters.ForEach(l => l.LinePosition--);
+               footerSeparatorLinePosition--;
+               footerStatusLinePosition--;
             }
 
-            Console.WriteLine();
-            (_, int linePosition) = Console.GetCursorPosition();
+            console.WriteLine();
+            (_, int linePosition) = console.GetCursorPosition();
             // Don't use the footer buffer (last 2 lines)
-            if (linePosition >= Console.BufferHeight - 2)
+            if (linePosition >= console.BufferHeight - 2)
             {
-               linePosition = Console.BufferHeight - 3;
+               linePosition = console.BufferHeight - 3;
             }
             lw = new LineWriter(linePosition);
             lineWriters.Add(lw);
@@ -189,8 +201,8 @@ namespace RingVideos.Writers
          {
             if (lw.LinePosition < 0) lw.LinePosition = 0;
             Monitor.Enter(lockObj);
-            Console.SetCursorPosition(0, lw.LinePosition);
-            Console.Write(message);
+            console.SetCursorPosition(0, lw.LinePosition);
+            console.Write(message);
             lw.InitialMessage = message;
          }
          finally
@@ -203,40 +215,38 @@ namespace RingVideos.Writers
          try
          {
             Monitor.Enter(lockObj);
-            //Console.SetCursorPosition(0, lw.LinePosition);
-            //Console.Write(new string(' ', Console.WindowWidth));
             if(lw.LinePosition < 0) lw.LinePosition = 0;
-            Console.SetCursorPosition(0, lw.LinePosition);
+            console.SetCursorPosition(0, lw.LinePosition);
             if (message.Length > lw.InitialStatusLength)
             {
                lw.InitialStatusLength = message.Length;
             }
-            Console.Write($"{lw.InitialMessage}  ");
+            console.Write($"{lw.InitialMessage}  ");
             switch (msgType)
             {
                case MessageType.Highlight:
-                  Console.ForegroundColor = ConsoleColor.Cyan;
+                  console.ForegroundColor = ConsoleColor.Cyan;
                   break;
                case MessageType.Warning:
-                  Console.ForegroundColor = ConsoleColor.Yellow;
+                  console.ForegroundColor = ConsoleColor.Yellow;
                   break;
                case MessageType.Error:
-                  Console.ForegroundColor = ConsoleColor.Red;
+                  console.ForegroundColor = ConsoleColor.Red;
                   break;
                case MessageType.Final:
-                  Console.ForegroundColor = ConsoleColor.Green;
+                  console.ForegroundColor = ConsoleColor.Green;
                   break;
                case MessageType.Initial:
-                  Console.ForegroundColor = ConsoleColor.Blue;
+                  console.ForegroundColor = ConsoleColor.Blue;
                   break;
                case MessageType.Info:
                default:
-                  Console.ResetColor();
+                  console.ResetColor();
                   break;
             }
 
-            Console.Write(message.PadRight(lw.InitialStatusLength));
-            Console.ResetColor();
+            console.Write(message.PadRight(lw.InitialStatusLength));
+            console.ResetColor();
             log.LogInformation($"{lw.InitialMessage}  {message}");
          }
          finally
@@ -270,14 +280,14 @@ namespace RingVideos.Writers
             if (footerStatusLinePosition >= 0)
             {
                // Update separator line (blank)
-               Console.SetCursorPosition(0, footerSeparatorLinePosition);
-               Console.Write("".PadRight(Console.WindowWidth - 1));
+               console.SetCursorPosition(0, footerSeparatorLinePosition);
+               console.Write("".PadRight(console.WindowWidth - 1));
 
                // Update status line
-               Console.SetCursorPosition(0, footerStatusLinePosition);
-               Console.ForegroundColor = ConsoleColor.Cyan;
-               Console.Write(message.PadRight(Console.WindowWidth - 1));
-               Console.ResetColor();
+               console.SetCursorPosition(0, footerStatusLinePosition);
+               console.ForegroundColor = ConsoleColor.Cyan;
+               console.Write(message.PadRight(console.WindowWidth - 1));
+               console.ResetColor();
                log.LogInformation($"Status: {message}");
             }
          }
