@@ -6,7 +6,6 @@ using Serilog;
 using Serilog.Core;
 using Serilog.Events;
 using Serilog.Formatting.Json;
-using Serilog.Sinks.SystemConsole.Themes;
 
 #nullable enable
 
@@ -37,11 +36,11 @@ public static class LoggerFactory
             .Enrich.FromLogContext()
             .Enrich.WithProperty("Application", "RingVideos");
 
-        // Console sink with colors - show Information and above (download progress, etc)
-        config = config.WriteTo.Console(
-            restrictedToMinimumLevel: LogEventLevel.Information,
-            theme: AnsiConsoleTheme.Code,
-            outputTemplate: "[{Timestamp:HH:mm:ss}] [{Level:u3}] {Message:lj}{NewLine}{Exception}");
+        // No Serilog Console sink: ConsoleWriter owns the terminal exclusively via absolute
+        // cursor positioning for the live download grid/footer. A Serilog console sink would
+        // do plain sequential WriteLine calls wherever the cursor currently sits, corrupting
+        // that positioning (and, since ConsoleWriter also logs, duplicating every line).
+        // Screen output goes through ConsoleWriter; every sink below is for file/AI diagnostics.
 
         // Daily rolling file sink (human-readable) - capture all messages at file level
         config = config.WriteTo.File(
