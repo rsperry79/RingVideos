@@ -38,7 +38,7 @@ public class ConsoleWriterTests
     {
         // This is the "static speed bar" expectation: repeated status updates with no
         // intervening download rows must land on the same row every time, not stack up
-        // as new lines.
+        // as new lines. Footer should always be at the last line, regardless of buffer height.
         var console = new FakeConsole { BufferHeight = 30, WindowWidth = 80 };
         var writer = CreateWriter(console);
 
@@ -46,10 +46,14 @@ public class ConsoleWriterTests
         writer.UpdateFooterStatus("Speed: 2.0 MB/s");
         writer.UpdateFooterStatus("Speed: 3.0 MB/s");
 
-        // Only row 29 (and the row 28 separator it also touches) should ever have been written to.
-        Assert.Equal(new[] { 28, 29 }, console.RowContents.Keys.OrderBy(k => k));
-        Assert.Contains("Speed: 3.0 MB/s", console.RowContents[29]);
-        Assert.DoesNotContain("Speed: 1.0 MB/s", console.RowContents[29]);
+        // Footer should be at last line (BufferHeight - 1), separator at last - 1
+        int expectedStatusRow = console.BufferHeight - 1;
+        int expectedSeparatorRow = console.BufferHeight - 2;
+
+        Assert.Contains(expectedStatusRow, console.RowContents.Keys);
+        Assert.Contains(expectedSeparatorRow, console.RowContents.Keys);
+        Assert.Contains("Speed: 3.0 MB/s", console.RowContents[expectedStatusRow]);
+        Assert.DoesNotContain("Speed: 1.0 MB/s", console.RowContents[expectedStatusRow]);
     }
 
     [Fact]
@@ -64,9 +68,10 @@ public class ConsoleWriterTests
 
         writer.UpdateFooterStatus("after growth");
 
-        // Footer should follow the new buffer height (219), not the original (29).
-        Assert.True(console.RowContents.ContainsKey(219));
-        Assert.Contains("after growth", console.RowContents[219]);
+        // Footer should follow the new buffer height (last line = 219), not the original (29).
+        int expectedStatusRow = console.BufferHeight - 1;
+        Assert.True(console.RowContents.ContainsKey(expectedStatusRow));
+        Assert.Contains("after growth", console.RowContents[expectedStatusRow]);
     }
 
     [Fact]
