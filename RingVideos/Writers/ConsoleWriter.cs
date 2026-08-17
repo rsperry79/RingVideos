@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 using System;
+using System.IO;
 using System.Linq;
 using System.Threading;
 
@@ -10,12 +11,76 @@ namespace RingVideos.Writers
       private ILogger<ConsoleWriter> log;
       private object lockObj = new object();
       private ThreadSafeList<LineWriter> lineWriters;
- 
+      private int footerStatusLinePosition = -1;
+      private int footerSeparatorLinePosition = -1;
 
       public ConsoleWriter(ILogger<ConsoleWriter> log)
       {
          this.log = log;
          lineWriters = new ThreadSafeList<LineWriter>();
+         InitializeFooter();
+      }
+
+      private void InitializeFooter()
+      {
+         try
+         {
+            Monitor.Enter(lockObj);
+            footerStatusLinePosition = Console.BufferHeight - 1;
+            footerSeparatorLinePosition = Console.BufferHeight - 2;
+
+            // Write separator line
+            Console.SetCursorPosition(0, footerSeparatorLinePosition);
+            Console.WriteLine();
+
+            // Write empty status line
+            Console.SetCursorPosition(0, footerStatusLinePosition);
+            Console.WriteLine();
+         }
+         finally
+         {
+            Monitor.Exit(lockObj);
+         }
+      }
+
+      /// <summary>
+      /// Grows the console screen buffer (if needed) so a run with many downloads never fills it up.
+      /// Every per-download status line lives at a fixed absolute row (see GetLineWriter/Update below);
+      /// once total output exceeds the buffer height, the console scrolls and silently invalidates every
+      /// previously recorded row position, which shows up as corrupted/overlapping text. Call this once
+      /// the expected number of lines for the run is known, before any of those lines are written.
+      /// </summary>
+      public void EnsureBufferHeight(int expectedLineCount)
+      {
+         try
+         {
+            Monitor.Enter(lockObj);
+
+            var needed = Math.Min(expectedLineCount + 20, short.MaxValue - 1);
+            if (Console.BufferHeight >= needed)
+               return;
+
+            Console.SetBufferSize(Console.BufferWidth, needed);
+
+            // Footer position depends on buffer height - recompute and redraw without triggering
+            // a scroll (avoid WriteLine at the last row, which would itself push the buffer up by one).
+            footerStatusLinePosition = Console.BufferHeight - 1;
+            footerSeparatorLinePosition = Console.BufferHeight - 2;
+
+            Console.SetCursorPosition(0, footerSeparatorLinePosition);
+            Console.Write(new string(' ', Console.BufferWidth - 1));
+            Console.SetCursorPosition(0, footerStatusLinePosition);
+            Console.Write(new string(' ', Console.BufferWidth - 1));
+         }
+         catch (Exception ex) when (ex is IOException || ex is ArgumentOutOfRangeException || ex is System.Security.SecurityException)
+         {
+            // Output redirected/piped, or the host terminal doesn't support resizing - nothing we can do,
+            // fall back to whatever buffer height already exists.
+         }
+         finally
+         {
+            Monitor.Exit(lockObj);
+         }
       }
       private void WriteMessage(string message, MessageType msgType = MessageType.Info)
       {
@@ -89,14 +154,14 @@ namespace RingVideos.Writers
       }
       public LineWriter GetLineWriter()
       {
-      
+
          LineWriter lw;
          try
          {
             Monitor.Enter(lockObj);
-            if (Console.BufferHeight -1 == Console.CursorTop)
+            if (Console.BufferHeight - 3 == Console.CursorTop)
             {
-               if (Console.BufferHeight - 1 == Console.CursorTop)
+               if (Console.BufferHeight - 3 == Console.CursorTop)
                {
                   lineWriters.ForEach(l => l.LinePosition--);
                }
@@ -104,6 +169,11 @@ namespace RingVideos.Writers
 
             Console.WriteLine();
             (_, int linePosition) = Console.GetCursorPosition();
+            // Don't use the footer buffer (last 2 lines)
+            if (linePosition >= Console.BufferHeight - 2)
+            {
+               linePosition = Console.BufferHeight - 3;
+            }
             lw = new LineWriter(linePosition);
             lineWriters.Add(lw);
          }
@@ -190,6 +260,31 @@ namespace RingVideos.Writers
       public void UpdateWarning(LineWriter lw, string message)
       {
          Update(lw, message, MessageType.Warning);
+      }
+
+      public void UpdateFooterStatus(string message)
+      {
+         try
+         {
+            Monitor.Enter(lockObj);
+            if (footerStatusLinePosition >= 0)
+            {
+               // Update separator line (blank)
+               Console.SetCursorPosition(0, footerSeparatorLinePosition);
+               Console.Write("".PadRight(Console.WindowWidth - 1));
+
+               // Update status line
+               Console.SetCursorPosition(0, footerStatusLinePosition);
+               Console.ForegroundColor = ConsoleColor.Cyan;
+               Console.Write(message.PadRight(Console.WindowWidth - 1));
+               Console.ResetColor();
+               log.LogInformation($"Status: {message}");
+            }
+         }
+         finally
+         {
+            Monitor.Exit(lockObj);
+         }
       }
 
    }

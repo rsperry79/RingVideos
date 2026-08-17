@@ -1,0 +1,3 @@
+[submodule "external/RingApi"]
+	path = external/RingApi
+	url = https://github.com/rsperry79/RingApi.git

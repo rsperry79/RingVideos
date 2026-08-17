@@ -34,7 +34,7 @@
     </None>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Api\Api.csproj" />
+    <ProjectReference Include="..\external\RingApi\Api\Api.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Update="appSettings.json">

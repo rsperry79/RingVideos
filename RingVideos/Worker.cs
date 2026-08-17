@@ -62,7 +62,7 @@ namespace RingVideos
             }
             while (true)
             {
-               if (quitRequested || stoppingToken.IsCancellationRequested)
+               if (quitRequested || stoppingToken.IsCancellationRequested || ShutdownSignal.Cts.IsCancellationRequested)
                {
                   break;
                }
@@ -149,9 +149,11 @@ namespace RingVideos
          }
          if (!string.IsNullOrEmpty(password))
          {
+            // Keep the password as a fallback credential, but don't discard a cached refresh token -
+            // Authenicate() already tries the refresh token first and only falls back to
+            // username/password (which triggers 2FA) if that fails. Wiping it here forced a full
+            // 2FA re-auth on every single run since -u/-p are supplied on every invocation.
             ringApp.Auth.ClearTextPassword = password;
-            ringApp.Auth.ClearTextRefreshToken = "";
-            ringApp.Auth.RefreshToken = "";
          }
          if (!string.IsNullOrEmpty(path))
          {

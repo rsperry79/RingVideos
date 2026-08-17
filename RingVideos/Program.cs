@@ -18,6 +18,8 @@ namespace RingVideos
       private static IConfigurationRoot Configuration;
       public static void Main(string[] args)
       {
+         ShutdownSignal.Register();
+
          // Extract and strip verbosity flags (-d / --debug / -t / --trace) before
          // they are handed off to System.CommandLine, which doesn't know about them.
          var (filteredArgs, minimumLevel) = ExtractVerbosityFlags(args);
@@ -91,6 +93,9 @@ namespace RingVideos
                 //services.AddSingleton<ConsoleFormatter, CustomConsoleFormatter>();
                 services.AddSingleton<ConsoleWriter>();
 
+                // Give a Ctrl+C-interrupted run enough time to finish in-flight downloads and
+                // write the failure report/settings before the host force-tears-down the process.
+                services.Configure<HostOptions>(opts => opts.ShutdownTimeout = TimeSpan.FromSeconds(30));
              });
 
 
