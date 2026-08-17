@@ -37,9 +37,9 @@ public static class LoggerFactory
             .Enrich.FromLogContext()
             .Enrich.WithProperty("Application", "RingVideos");
 
-        // Console sink with colors - keep less verbose (Warning and above for clean UX)
+        // Console sink with colors - show Information and above (download progress, etc)
         config = config.WriteTo.Console(
-            restrictedToMinimumLevel: LogEventLevel.Warning,
+            restrictedToMinimumLevel: LogEventLevel.Information,
             theme: AnsiConsoleTheme.Code,
             outputTemplate: "[{Timestamp:HH:mm:ss}] [{Level:u3}] {Message:lj}{NewLine}{Exception}");
 
