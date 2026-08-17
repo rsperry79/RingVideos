@@ -297,8 +297,8 @@ namespace KoenZomers.Ring.Api
         /// </summary>
         /// <param name="url">Url to download the file from</param>
         /// <param name="bearerToken">Bearer token to authenticate the request with. Leave out to not authenticate the session.</param>
-        /// <returns>Stream with the file download</returns>
-        public async Task<Stream> DownloadFile(Uri url, string bearerToken = null)
+        /// <returns>Byte array with the file download</returns>
+        public async Task<byte[]> DownloadFile(Uri url, string bearerToken = null)
         {
             // Construct the request
             var request = new HttpRequestMessage
@@ -321,8 +321,10 @@ namespace KoenZomers.Ring.Api
             }
 
             // Receive the response from the webserver
-            var response = await _httpClient.SendAsync(request);
-            return await response.Content.ReadAsStreamAsync();
+            using (var response = await _httpClient.SendAsync(request))
+            {
+                return await response.Content.ReadAsByteArrayAsync();
+            }
         }
 
         /// <summary>

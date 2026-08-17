@@ -540,8 +540,8 @@ namespace KoenZomers.Ring.Api
                     break;
                 }
 
-                // Wait one second before requesting the recording again
-                Thread.Sleep(TimeSpan.FromSeconds(2));
+                // Wait two seconds before requesting the recording again
+                await Task.Delay(TimeSpan.FromSeconds(2));
             }
 
             // Ensure we ended with a valid URL to download the recording from
@@ -551,8 +551,8 @@ namespace KoenZomers.Ring.Api
             }
 
             // Request the file download from the returned URI
-            var stream = await _httpUtility.DownloadFile(downloadUri);
-            return stream;
+            var bytes = await _httpUtility.DownloadFile(downloadUri);
+            return new MemoryStream(bytes);
         }
 
 
@@ -593,10 +593,38 @@ namespace KoenZomers.Ring.Api
         {
             await EnsureSessionValid();
 
-            using var stream = await GetDoorbotHistoryRecording(dingId);
-            using var fileStream = File.Create(saveAs);
-            
-            await stream.CopyToAsync(fileStream);
+            // Construct the URL where to request downloading of a recording
+            var downloadRequestUri = new Uri(RingApiBaseUrl, $"dings/{dingId}/share/download?disable_redirect=true");
+
+            Entities.DownloadRecording downloadResult = null;
+            for (var downloadAttempt = 1; downloadAttempt < 60; downloadAttempt++)
+            {
+                // Request to download the recording
+                var response = await _httpUtility.GetContents(downloadRequestUri, AuthenticationToken, _hardwareId);
+
+                // Parse the result
+                downloadResult = JsonSerializer.Deserialize<DownloadRecording>(response);
+
+                // If the Ring API returns an empty URL property, it means it's still preparing the download on the server side. Just keep requesting the recording until it returns a URL.
+                if (!string.IsNullOrWhiteSpace(downloadResult.Url))
+                {
+                    // URL returned is not empty, start the download from the returned URL
+                    break;
+                }
+
+                // Wait two seconds before requesting the recording again
+                await Task.Delay(TimeSpan.FromSeconds(2));
+            }
+
+            // Ensure we ended with a valid URL to download the recording from
+            if (downloadResult == null || string.IsNullOrWhiteSpace(downloadResult.Url) || !Uri.TryCreate(downloadResult.Url, UriKind.Absolute, out Uri downloadUri))
+            {
+                throw new Exceptions.DownloadFailedException(downloadResult?.Url ?? "(no URL was created)");
+            }
+
+            // Request the file download from the returned URI and save to file
+            var bytes = await _httpUtility.DownloadFile(downloadUri);
+            await File.WriteAllBytesAsync(saveAs, bytes);
         }
 
         /// <summary>
@@ -741,8 +769,8 @@ namespace KoenZomers.Ring.Api
             var downloadSnapshotUri = new Uri(RingApiBaseUrl, $"snapshots/image/{doorbotId}");
 
             // Request the snapshot
-            var stream = await _httpUtility.DownloadFile(downloadSnapshotUri, AuthenticationToken);
-            return stream;
+            var bytes = await _httpUtility.DownloadFile(downloadSnapshotUri, AuthenticationToken);
+            return new MemoryStream(bytes);
         }
 
         /// <summary>
