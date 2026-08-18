@@ -4,27 +4,14 @@ namespace RingVideos.Tests;
 
 public class WorkerAuthResolutionTests
 {
-    private static string NoEnvVars(string name) => null!;
-
     [Fact]
     public void RefreshToken_Present_SucceedsWithoutUsernameOrPassword()
     {
         var auth = new RingCredentials { RefreshToken = "cached-refresh-token" };
 
-        var error = Worker.ResolveAuthError(auth, NoEnvVars);
+        var error = Worker.ResolveAuthError(auth);
 
         Assert.Null(error);
-    }
-
-    [Fact]
-    public void RefreshToken_FromEnvironment_SucceedsWithoutUsernameOrPassword()
-    {
-        var auth = new RingCredentials();
-
-        var error = Worker.ResolveAuthError(auth, name => name == "RefreshToken" ? "env-refresh-token" : null!);
-
-        Assert.Null(error);
-        Assert.Equal("env-refresh-token", auth.RefreshToken);
     }
 
     [Fact]
@@ -32,26 +19,9 @@ public class WorkerAuthResolutionTests
     {
         var auth = new RingCredentials { UserName = "user@example.com", Password = "pw" };
 
-        var error = Worker.ResolveAuthError(auth, NoEnvVars);
+        var error = Worker.ResolveAuthError(auth);
 
         Assert.Null(error);
-    }
-
-    [Fact]
-    public void UsernameAndPassword_FromEnvironment_Succeeds()
-    {
-        var auth = new RingCredentials();
-
-        var error = Worker.ResolveAuthError(auth, name => name switch
-        {
-            "RingUsername" => "env-user@example.com",
-            "RingPassword" => "env-password",
-            _ => null!
-        });
-
-        Assert.Null(error);
-        Assert.Equal("env-user@example.com", auth.UserName);
-        Assert.Equal("env-password", auth.Password);
     }
 
     [Fact]
@@ -59,7 +29,7 @@ public class WorkerAuthResolutionTests
     {
         var auth = new RingCredentials();
 
-        var error = Worker.ResolveAuthError(auth, NoEnvVars);
+        var error = Worker.ResolveAuthError(auth);
 
         Assert.Equal("A Ring username is required", error);
     }
@@ -69,7 +39,7 @@ public class WorkerAuthResolutionTests
     {
         var auth = new RingCredentials { UserName = "user@example.com" };
 
-        var error = Worker.ResolveAuthError(auth, NoEnvVars);
+        var error = Worker.ResolveAuthError(auth);
 
         Assert.Equal("A Ring password is required", error);
     }
@@ -81,7 +51,7 @@ public class WorkerAuthResolutionTests
         // that check entirely - this is the bug this test guards against regressing.
         var auth = new RingCredentials { RefreshToken = "cached-refresh-token", UserName = "user@example.com" };
 
-        var error = Worker.ResolveAuthError(auth, NoEnvVars);
+        var error = Worker.ResolveAuthError(auth);
 
         Assert.Null(error);
     }

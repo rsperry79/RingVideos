@@ -207,7 +207,7 @@ namespace RingVideos
       }
       private static bool SetAuthenticationValues()
       {
-         var error = ResolveAuthError(ringApp.Auth, System.Environment.GetEnvironmentVariable);
+         var error = ResolveAuthError(ringApp.Auth);
          if (error != null)
          {
             cw.Error(error);
@@ -218,25 +218,13 @@ namespace RingVideos
       }
 
       /// <summary>
-      /// Fills in <paramref name="auth"/> from the RefreshToken/RingUsername/RingPassword environment
-      /// variables where it's missing values, then checks whether what's left is enough to attempt
-      /// authentication with. A refresh token alone is sufficient - Authenicate() tries it before
-      /// falling back to username/password, so username/password are only required when there's no
-      /// refresh token to try first. Pure aside from mutating <paramref name="auth"/> and calling
-      /// <paramref name="getEnvVar"/>, so it's testable without a real environment or console.
+      /// Checks whether <paramref name="auth"/> has enough to attempt authentication with.
+      /// A refresh token alone is sufficient - Authenticate() tries it before falling back to
+      /// username/password, so username/password are only required when there's no refresh token.
       /// </summary>
       /// <returns>Null if authentication can proceed, otherwise a user-facing error message.</returns>
-      internal static string ResolveAuthError(RingCredentials auth, Func<string, string> getEnvVar)
+      internal static string ResolveAuthError(RingCredentials auth)
       {
-         if (string.IsNullOrWhiteSpace(auth.RefreshToken))
-         {
-            var rt = getEnvVar("RefreshToken");
-            if (!string.IsNullOrWhiteSpace(rt))
-            {
-               auth.RefreshToken = rt;
-            }
-         }
-
          if (!string.IsNullOrWhiteSpace(auth.RefreshToken))
          {
             return null;
@@ -244,28 +232,12 @@ namespace RingVideos
 
          if (string.IsNullOrWhiteSpace(auth.UserName))
          {
-            var un = getEnvVar("RingUsername");
-            if (!string.IsNullOrWhiteSpace(un))
-            {
-               auth.UserName = un;
-            }
-            else
-            {
-               return "A Ring username is required";
-            }
+            return "A Ring username is required";
          }
 
          if (string.IsNullOrWhiteSpace(auth.Password))
          {
-            var pw = getEnvVar("RingPassword");
-            if (!string.IsNullOrWhiteSpace(pw))
-            {
-               auth.Password = pw;
-            }
-            else
-            {
-               return "A Ring password is required";
-            }
+            return "A Ring password is required";
          }
 
          return null;

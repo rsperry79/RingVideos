@@ -92,6 +92,11 @@ namespace RingVideos
          {
             MigrateLegacyAuth(contents);
          }
+
+         if (CredentialStore.SanitizeClearTextPassword(SavedSettingsFile, AuthFile))
+         {
+            log.LogWarning("Found and encrypted a clear-text password in {file}", SavedSettingsFile);
+         }
       }
 
       /// <summary>
