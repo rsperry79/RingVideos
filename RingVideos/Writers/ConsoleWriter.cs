@@ -1,47 +1,69 @@
 using Microsoft.Extensions.Logging;
 using System;
 using System.IO;
-using System.Linq;
 using System.Threading;
 
 namespace RingVideos.Writers
 {
+   /// <summary>
+   /// Renders a small "pinned" region - up to N live download rows, a separator, and a
+   /// footer status line - that always stays at the bottom of the terminal, with general
+   /// log messages scrolling normally above it.
+   ///
+   /// Why this shape: an earlier version gave every download item its own permanent
+   /// absolute buffer row and tried to keep the footer's absolute row in sync by detecting
+   /// and compensating for buffer scrolls (via Console.BufferHeight arithmetic). That broke
+   /// down on real terminals - particularly Windows Terminal/ConPTY - where BufferHeight
+   /// does not reliably describe a stable coordinate space that tracks the visible viewport.
+   /// Trying to reason about "the buffer scrolled N times" from BufferHeight alone silently
+   /// desynced item/footer rows from what was actually on screen, which is what caused the
+   /// footer status to appear to pile up as new lines instead of overwriting in place.
+   ///
+   /// Instead, every write here is relative to the cursor's ACTUAL, freshly-queried position
+   /// (Console.CursorTop), never a cached/assumed absolute row. The class enforces one
+   /// invariant: after any public method returns, the cursor is parked at column 0 of the
+   /// region's last line (the footer). Updating a single row is a small in-place jump (up N
+   /// rows, write, back down); inserting new scrolling log content is an erase-region /
+   /// write-line / redraw-region sequence. Because the region and the log both move via the
+   /// same natural relative cursor motion, they can never drift apart the way independently
+   /// computed absolute rows could.
+   ///
+   /// The active region is deliberately small and fixed (default 10, matching the app's
+   /// download concurrency semaphore) rather than one row per item - a handful of rows
+   /// always fits inside any real terminal window, so no buffer growth is ever required.
+   /// Items that finish are expected to call <see cref="ReleaseLineWriter"/>, which prints
+   /// their final line into the scrolling log and frees the slot for reuse.
+   /// </summary>
    public class ConsoleWriter
    {
-      private ILogger<ConsoleWriter> log;
-      private IConsole console;
-      private object lockObj = new object();
-      private ThreadSafeList<LineWriter> lineWriters;
-      private int footerStatusLinePosition = -1;
-      private int footerSeparatorLinePosition = -1;
+      private readonly ILogger<ConsoleWriter> log;
+      private readonly IConsole console;
+      private readonly object lockObj = new object();
+      private readonly int maxActiveSlots;
+      private readonly LineWriter[] slots;
+      private string footerText = "";
 
-      public ConsoleWriter(ILogger<ConsoleWriter> log) : this(log, new SystemConsole())
+      public ConsoleWriter(ILogger<ConsoleWriter> log, int maxActiveSlots = 10) : this(log, new SystemConsole(), maxActiveSlots)
       {
       }
 
-      public ConsoleWriter(ILogger<ConsoleWriter> log, IConsole console)
+      public ConsoleWriter(ILogger<ConsoleWriter> log, IConsole console, int maxActiveSlots = 10)
       {
          this.log = log;
          this.console = console;
-         lineWriters = new ThreadSafeList<LineWriter>();
-         InitializeFooter();
+         this.maxActiveSlots = Math.Max(1, maxActiveSlots);
+         this.slots = new LineWriter[this.maxActiveSlots];
+         InitializeRegion();
       }
 
-      private void InitializeFooter()
+      private int RegionHeight => maxActiveSlots + 2; // active rows + separator + footer
+
+      private void InitializeRegion()
       {
          try
          {
             Monitor.Enter(lockObj);
-            footerStatusLinePosition = console.BufferHeight - 1;
-            footerSeparatorLinePosition = console.BufferHeight - 2;
-
-            // Write separator line
-            console.SetCursorPosition(0, footerSeparatorLinePosition);
-            console.WriteLine();
-
-            // Write empty status line
-            console.SetCursorPosition(0, footerStatusLinePosition);
-            console.WriteLine();
+            RedrawRegion();
          }
          finally
          {
@@ -50,203 +72,239 @@ namespace RingVideos.Writers
       }
 
       /// <summary>
-      /// Grows the console screen buffer (if needed) so a run with many downloads never fills it up.
-      /// Every per-download status line lives at a fixed absolute row (see GetLineWriter/Update below);
-      /// once total output exceeds the buffer height, the console scrolls and silently invalidates every
-      /// previously recorded row position, which shows up as corrupted/overlapping text. Call this once
-      /// the expected number of lines for the run is known, before any of those lines are written.
+      /// Historically grew the console buffer to fit one absolute row per download. The
+      /// pinned-region design no longer needs that - the live region is always a small,
+      /// fixed number of rows - so this is now just a defensive minimum-size check kept for
+      /// API compatibility with existing call sites.
       /// </summary>
       public void EnsureBufferHeight(int expectedLineCount)
       {
          try
          {
             Monitor.Enter(lockObj);
-
-            var needed = Math.Min(expectedLineCount + 20, short.MaxValue - 1);
-            if (console.BufferHeight >= needed)
+            var minNeeded = RegionHeight + 5;
+            if (console.BufferHeight >= minNeeded)
                return;
 
-            console.SetBufferSize(console.BufferWidth, needed);
-
-            // Footer position depends on buffer height - recompute and redraw without triggering
-            // a scroll (avoid WriteLine at the last row, which would itself push the buffer up by one).
-            footerStatusLinePosition = console.BufferHeight - 1;
-            footerSeparatorLinePosition = console.BufferHeight - 2;
-
-            console.SetCursorPosition(0, footerSeparatorLinePosition);
-            console.Write(new string(' ', console.BufferWidth - 1));
-            console.SetCursorPosition(0, footerStatusLinePosition);
-            console.Write(new string(' ', console.BufferWidth - 1));
+            console.SetBufferSize(console.BufferWidth, minNeeded);
          }
          catch (Exception ex) when (ex is IOException || ex is ArgumentOutOfRangeException || ex is System.Security.SecurityException)
          {
-            // Output redirected/piped, or the host terminal doesn't support resizing - nothing we can do,
-            // fall back to whatever buffer height already exists.
+            // Output redirected/piped, or the host terminal doesn't support resizing - nothing we can do.
          }
          finally
          {
             Monitor.Exit(lockObj);
          }
       }
-      private void WriteMessage(string message, MessageType msgType = MessageType.Info)
+
+      /// <summary>Clears every row of the pinned region, leaving the cursor parked at the region's top-left.</summary>
+      private void EraseRegionAndMoveToTop()
+      {
+         int bottom = console.CursorTop;
+         int top = Math.Max(0, bottom - (RegionHeight - 1));
+         console.SetCursorPosition(0, top);
+         for (int i = 0; i < RegionHeight; i++)
+         {
+            console.Write(new string(' ', Math.Max(0, console.WindowWidth - 1)));
+            if (i < RegionHeight - 1)
+            {
+               console.WriteLine();
+            }
+            else
+            {
+               console.SetCursorPosition(0, top);
+            }
+         }
+      }
+
+      /// <summary>Redraws every active slot, the separator, and the footer, assuming the cursor is at the region's top-left. Leaves the cursor parked at column 0 of the footer row.</summary>
+      private void RedrawRegion()
+      {
+         for (int i = 0; i < maxActiveSlots; i++)
+         {
+            var lw = slots[i];
+            console.Write((lw?.RenderedLine ?? string.Empty).PadRight(Math.Max(0, console.WindowWidth - 1)));
+            console.WriteLine();
+         }
+         console.WriteLine(); // separator (blank)
+
+         int footerRow = console.CursorTop;
+         console.Write(footerText.PadRight(Math.Max(0, console.WindowWidth - 1)));
+         console.SetCursorPosition(0, footerRow);
+      }
+
+      /// <summary>Jumps up from the parked footer row to the given active slot, writes, then restores the parked position.</summary>
+      private void WriteSlot(int slotIndex, string text)
+      {
+         int bottom = console.CursorTop;
+         int rowsUpFromBottom = (RegionHeight - 1) - slotIndex;
+         int targetRow = Math.Max(0, bottom - rowsUpFromBottom);
+         console.SetCursorPosition(0, targetRow);
+         console.Write(text.PadRight(Math.Max(0, console.WindowWidth - 1)));
+         console.SetCursorPosition(0, bottom);
+      }
+
+      /// <summary>Erases the region, writes one new line into the scrolling log above it, then redraws the region.</summary>
+      private void WriteLogLine(string message, MessageType msgType)
       {
          try
          {
             Monitor.Enter(lockObj);
-            var maxLine = GetMaxLineWriterLine();
-            switch (msgType)
-            {
-               case MessageType.Highlight:
-                  console.ForegroundColor = ConsoleColor.Cyan;
-                  break;
-               case MessageType.Warning:
-                  console.ForegroundColor = ConsoleColor.Yellow;
-                  break;
-               case MessageType.Error:
-                  console.ForegroundColor = ConsoleColor.Red;
-                  break;
-               case MessageType.Info:
-               default:
-                  console.ResetColor();
-                  break;
-            }
-            if (maxLine > 0)
-            {
-               console.SetCursorPosition(0, maxLine);
-            }
+            EraseRegionAndMoveToTop();
+            SetColorFor(msgType);
             console.WriteLine(message);
             console.ResetColor();
+            RedrawRegion();
          }
          finally
          {
             Monitor.Exit(lockObj);
          }
       }
-      public int GetMaxLineWriterLine()
-      {
-         if (lineWriters.Count > 0)
-         {
-            return lineWriters.Max(l => l.LinePosition);
-         }
-         else
-         {
-            return -1;
-         }
 
+      private void SetColorFor(MessageType msgType)
+      {
+         switch (msgType)
+         {
+            case MessageType.Highlight:
+               console.ForegroundColor = ConsoleColor.Cyan;
+               break;
+            case MessageType.Warning:
+               console.ForegroundColor = ConsoleColor.Yellow;
+               break;
+            case MessageType.Error:
+               console.ForegroundColor = ConsoleColor.Red;
+               break;
+            case MessageType.Final:
+               console.ForegroundColor = ConsoleColor.Green;
+               break;
+            case MessageType.Initial:
+               console.ForegroundColor = ConsoleColor.Blue;
+               break;
+            case MessageType.Info:
+            default:
+               console.ResetColor();
+               break;
+         }
       }
+
       public void ClearLineWriters()
       {
-         lineWriters.Clear();
+         try
+         {
+            Monitor.Enter(lockObj);
+            Array.Clear(slots, 0, slots.Length);
+         }
+         finally
+         {
+            Monitor.Exit(lockObj);
+         }
       }
+
+      public int GetMaxLineWriterLine()
+      {
+         try
+         {
+            Monitor.Enter(lockObj);
+            int max = -1;
+            for (int i = 0; i < slots.Length; i++)
+            {
+               if (slots[i] != null) max = i;
+            }
+            return max;
+         }
+         finally
+         {
+            Monitor.Exit(lockObj);
+         }
+      }
+
       public void Warning(string message)
       {
-         WriteMessage(message, MessageType.Warning);
+         WriteLogLine(message, MessageType.Warning);
          log.LogWarning(message);
       }
       public void Highlight(string message)
       {
-         WriteMessage(message, MessageType.Highlight);
+         WriteLogLine(message, MessageType.Highlight);
          log.LogInformation(message);
       }
       public void Info(string message)
       {
-         WriteMessage(message);
+         WriteLogLine(message, MessageType.Info);
          log.LogInformation(message);
       }
       public void Error(string message)
       {
-         WriteMessage(message, MessageType.Error);
+         WriteLogLine(message, MessageType.Error);
          log.LogError(message);
       }
+
       public LineWriter GetLineWriter()
       {
-
-         LineWriter lw;
          try
          {
             Monitor.Enter(lockObj);
-            if (console.BufferHeight - 3 == console.CursorTop)
+            int slotIndex = Array.IndexOf(slots, null);
+            if (slotIndex < 0)
             {
-               // A WriteLine() below would push the cursor onto the footer's separator row
-               // (i.e. a scroll is about to happen). Every previously recorded absolute row -
-               // including the footer's own two rows - shifts up by one when that happens, so
-               // keep footerStatusLinePosition/footerSeparatorLinePosition in sync with the
-               // lineWriters we're compensating below. Missing this was the cause of the footer
-               // "status bar" drifting off its row and reappearing as a fresh line on every
-               // update once a run had enough rows to reach the bottom of the buffer.
-               lineWriters.ForEach(l => l.LinePosition--);
-               footerSeparatorLinePosition--;
-               footerStatusLinePosition--;
+               // Defensive only: callers are expected to bound concurrency to maxActiveSlots
+               // (RingVideoApplication does this via its download semaphore). Reuse slot 0
+               // rather than throw if that contract is ever violated.
+               slotIndex = 0;
             }
 
-            console.WriteLine();
-            (_, int linePosition) = console.GetCursorPosition();
-            // Don't use the footer buffer (last 2 lines)
-            if (linePosition >= console.BufferHeight - 2)
-            {
-               linePosition = console.BufferHeight - 3;
-            }
-            lw = new LineWriter(linePosition);
-            lineWriters.Add(lw);
+            var lw = new LineWriter(slotIndex);
+            slots[slotIndex] = lw;
+            WriteSlot(slotIndex, "");
+            return lw;
          }
          finally
          {
             Monitor.Exit(lockObj);
          }
-         return lw;
       }
+
       public void Write(LineWriter lw, string message)
       {
          try
          {
-            if (lw.LinePosition < 0) lw.LinePosition = 0;
             Monitor.Enter(lockObj);
-            console.SetCursorPosition(0, lw.LinePosition);
-            console.Write(message);
             lw.InitialMessage = message;
+            lw.RenderedLine = message;
+            WriteSlot(lw.LinePosition, message);
          }
          finally
          {
             Monitor.Exit(lockObj);
          }
       }
+
       internal void Update(LineWriter lw, string message, MessageType msgType)
       {
          try
          {
             Monitor.Enter(lockObj);
-            if(lw.LinePosition < 0) lw.LinePosition = 0;
-            console.SetCursorPosition(0, lw.LinePosition);
             if (message.Length > lw.InitialStatusLength)
             {
                lw.InitialStatusLength = message.Length;
             }
-            console.Write($"{lw.InitialMessage}  ");
-            switch (msgType)
-            {
-               case MessageType.Highlight:
-                  console.ForegroundColor = ConsoleColor.Cyan;
-                  break;
-               case MessageType.Warning:
-                  console.ForegroundColor = ConsoleColor.Yellow;
-                  break;
-               case MessageType.Error:
-                  console.ForegroundColor = ConsoleColor.Red;
-                  break;
-               case MessageType.Final:
-                  console.ForegroundColor = ConsoleColor.Green;
-                  break;
-               case MessageType.Initial:
-                  console.ForegroundColor = ConsoleColor.Blue;
-                  break;
-               case MessageType.Info:
-               default:
-                  console.ResetColor();
-                  break;
-            }
+            lw.LastMessage = message;
+            lw.LastMessageType = msgType;
 
-            console.Write(message.PadRight(lw.InitialStatusLength));
+            int bottom = console.CursorTop;
+            int rowsUpFromBottom = (RegionHeight - 1) - lw.LinePosition;
+            int targetRow = Math.Max(0, bottom - rowsUpFromBottom);
+            console.SetCursorPosition(0, targetRow);
+            console.Write($"{lw.InitialMessage}  ");
+            SetColorFor(msgType);
+            var paddedStatus = message.PadRight(lw.InitialStatusLength);
+            console.Write(paddedStatus);
             console.ResetColor();
+            console.SetCursorPosition(0, bottom);
+
+            lw.RenderedLine = $"{lw.InitialMessage}  {paddedStatus}";
             log.LogInformation($"{lw.InitialMessage}  {message}");
          }
          finally
@@ -261,7 +319,6 @@ namespace RingVideos.Writers
       public void UpdateFinal(LineWriter lw, string message)
       {
          Update(lw, message, MessageType.Final);
-         //this.lineWriters.Remove(lw);
       }
       public void UpdateError(LineWriter lw, string message)
       {
@@ -272,32 +329,36 @@ namespace RingVideos.Writers
          Update(lw, message, MessageType.Warning);
       }
 
-      public void UpdateFooterStatus(string message)
+      /// <summary>
+      /// Marks an item's row as finished: prints its final rendered line into the scrolling
+      /// log (so it remains visible in terminal history) and frees its active slot so a new
+      /// download can reuse the row. Callers should invoke this once the item is truly done
+      /// (success or permanently failed), typically right where they release whatever
+      /// concurrency gate they used to bound how many rows can be active at once.
+      /// </summary>
+      public void ReleaseLineWriter(LineWriter lw)
       {
          try
          {
             Monitor.Enter(lockObj);
-            if (footerStatusLinePosition >= 0)
+
+            string finalText = string.IsNullOrEmpty(lw.LastMessage)
+               ? lw.InitialMessage
+               : $"{lw.InitialMessage}  {lw.LastMessage}";
+            var msgType = lw.LastMessageType ?? MessageType.Info;
+
+            if (lw.LinePosition >= 0 && lw.LinePosition < slots.Length && ReferenceEquals(slots[lw.LinePosition], lw))
             {
-               try
-               {
-                  // Clear and overwrite the footer status line
-                  console.SetCursorPosition(0, footerStatusLinePosition);
-                  // First clear the entire line with spaces
-                  console.Write(new string(' ', console.WindowWidth - 1));
-                  // Then move back to start and write the message
-                  console.SetCursorPosition(0, footerStatusLinePosition);
-                  string paddedMessage = message.PadRight(console.WindowWidth - 1);
-                  console.ForegroundColor = ConsoleColor.Cyan;
-                  console.Write(paddedMessage);
-                  console.ResetColor();
-               }
-               catch (Exception ex) when (ex is IOException || ex is ArgumentOutOfRangeException)
-               {
-                  log.LogError(ex, "Failed to update footer status");
-               }
-               log.LogInformation($"Status: {message}");
+               slots[lw.LinePosition] = null;
             }
+
+            EraseRegionAndMoveToTop();
+            SetColorFor(msgType);
+            console.WriteLine(finalText);
+            console.ResetColor();
+            RedrawRegion();
+
+            log.LogInformation(finalText);
          }
          finally
          {
@@ -305,5 +366,28 @@ namespace RingVideos.Writers
          }
       }
 
+      public void UpdateFooterStatus(string message)
+      {
+         try
+         {
+            Monitor.Enter(lockObj);
+            footerText = message ?? string.Empty;
+
+            // Cursor is parked at column 0 of the footer row per the class invariant - just
+            // overwrite it in place, no absolute-row lookup needed.
+            int footerRow = console.CursorTop;
+            console.SetCursorPosition(0, footerRow);
+            console.ForegroundColor = ConsoleColor.Cyan;
+            console.Write(footerText.PadRight(Math.Max(0, console.WindowWidth - 1)));
+            console.ResetColor();
+            console.SetCursorPosition(0, footerRow);
+
+            log.LogInformation($"Status: {message}");
+         }
+         finally
+         {
+            Monitor.Exit(lockObj);
+         }
+      }
    }
 }

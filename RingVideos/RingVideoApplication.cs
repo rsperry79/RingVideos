@@ -863,6 +863,7 @@ namespace RingVideos
          }
          finally
          {
+            cw.ReleaseLineWriter(lw);
             Interlocked.Decrement(ref activeDls);
             semaphore.Release();
          }
