@@ -279,18 +279,25 @@ namespace RingVideos.Writers
             Monitor.Enter(lockObj);
             if (footerStatusLinePosition >= 0)
             {
-               // Use carriage return to move to start of current line and overwrite
-               // This works on real Windows console unlike SetCursorPosition
-               string paddedMessage = message.PadRight(console.WindowWidth - 1);
-               console.ForegroundColor = ConsoleColor.Cyan;
-               console.Write($"\r{paddedMessage}");
-               console.ResetColor();
+               try
+               {
+                  // Position to footer line and overwrite with carriage return
+                  console.SetCursorPosition(0, footerStatusLinePosition);
+                  string paddedMessage = message.PadRight(console.WindowWidth - 1);
+                  console.ForegroundColor = ConsoleColor.Cyan;
+                  console.Write(paddedMessage);
+                  console.ResetColor();
+               }
+               catch (Exception ex) when (ex is IOException || ex is ArgumentOutOfRangeException)
+               {
+                  log.LogError(ex, "Failed to position footer status");
+               }
                log.LogInformation($"Status: {message}");
             }
          }
-         catch (Exception ex)
+         finally
          {
-            log.LogError(ex, "Error updating footer status");
+            Monitor.Exit(lockObj);
          }
       }
 
