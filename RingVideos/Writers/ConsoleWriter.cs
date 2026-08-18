@@ -279,12 +279,16 @@ namespace RingVideos.Writers
             Monitor.Enter(lockObj);
             if (footerStatusLinePosition >= 0)
             {
+               // Recalculate footer position on each update to account for buffer scrolling
+               int statusRow = console.BufferHeight - 1;
+               int separatorRow = console.BufferHeight - 2;
+
                // Update separator line (blank)
-               console.SetCursorPosition(0, footerSeparatorLinePosition);
+               console.SetCursorPosition(0, separatorRow);
                console.Write("".PadRight(console.WindowWidth - 1));
 
                // Update status line
-               console.SetCursorPosition(0, footerStatusLinePosition);
+               console.SetCursorPosition(0, statusRow);
                console.ForegroundColor = ConsoleColor.Cyan;
                console.Write(message.PadRight(console.WindowWidth - 1));
                console.ResetColor();

@@ -88,33 +88,33 @@ public class ConsoleWriterTests
     [Fact]
     public void GetLineWriter_ScrollCompensation_KeepsFooterPositionInSyncWithLineWriters()
     {
-        // Regression test for the bug reported live: with enough download rows to reach
-        // the bottom of the buffer, GetLineWriter's scroll-compensation branch shifted every
-        // tracked LineWriter up by one row but left the footer's tracked row untouched. Each
-        // time that fired, the footer drifted further from where it actually rendered, so the
-        // "status bar" appeared as a new line instead of overwriting in place.
+        // Regression test: Footer position should always be recalculated based on BufferHeight,
+        // so it stays at the last line even when scrolling happens due to many download items.
         var console = new FakeConsole { BufferHeight = 10, WindowWidth = 80 };
         var writer = CreateWriter(console);
-        // Footer rows are 8 (separator) and 9 (status) at this buffer height.
 
-        // Existing content row, well clear of the bottom.
+        // Footer should be at last two rows: 8 (separator) and 9 (status)
+        int expectedStatusRow = console.BufferHeight - 1;
+        int expectedSeparatorRow = console.BufferHeight - 2;
+
+        // Create first line writer
         console.SetCursorPosition(0, 4);
         var firstRow = writer.GetLineWriter();
         Assert.Equal(5, firstRow.LinePosition);
 
-        // Put the cursor exactly where GetLineWriter's scroll-compensation check fires
-        // (BufferHeight - 3 == CursorTop, i.e. one row before the footer separator).
+        // Trigger scroll-compensation by getting another line writer
+        // at position that would cause scroll
         console.SetCursorPosition(0, 7);
         writer.GetLineWriter();
 
-        // The pre-existing row should have shifted up by one, matching what a real scroll does...
+        // LineWriter positions should shift up after scroll compensation
         Assert.Equal(4, firstRow.LinePosition);
 
-        // ...and the footer must have shifted by the same amount, or its next write lands on a
-        // stale row instead of overwriting the visible footer.
+        // Footer should still be at the last line (recalculated on each update)
         writer.UpdateFooterStatus("still static");
-        Assert.True(console.RowContents.ContainsKey(8), "Footer status should have shifted to row 8, not stayed at 9.");
-        Assert.Contains("still static", console.RowContents[8]);
+        Assert.True(console.RowContents.ContainsKey(expectedStatusRow),
+            $"Footer status should be at row {expectedStatusRow} (BufferHeight - 1)");
+        Assert.Contains("still static", console.RowContents[expectedStatusRow]);
     }
 
     [Fact]
@@ -143,5 +143,39 @@ public class ConsoleWriterTests
 
         Assert.Contains("MB/s", statusLine);
         Assert.Contains("Downloaded", statusLine);
+    }
+
+    [Fact]
+    public void FooterStatus_StaysStaticDuringScrollingWithManyItems()
+    {
+        // Test that when many download items scroll the buffer, the footer status
+        // bar stays on the last line and doesn't create stacked duplicates.
+        var console = new FakeConsole { BufferHeight = 30, WindowWidth = 80 };
+        var writer = CreateWriter(console);
+
+        int expectedStatusRow = console.BufferHeight - 1;
+
+        // Simulate many download items being added (like in the app)
+        for (int i = 0; i < 20; i++)
+        {
+            var lineWriter = writer.GetLineWriter();
+            writer.Write(lineWriter, $"Item {i}: Downloading...");
+        }
+
+        // Update footer status multiple times (simulating speed bar updates)
+        writer.UpdateFooterStatus("Speed: 1.0 MB/s | Total: 10 MB");
+        writer.UpdateFooterStatus("Speed: 2.0 MB/s | Total: 20 MB");
+        writer.UpdateFooterStatus("Speed: 3.0 MB/s | Total: 30 MB");
+        writer.UpdateFooterStatus("Speed: 4.0 MB/s | Total: 40 MB");
+
+        // Footer should always be at the last line, with only the latest status
+        Assert.True(console.RowContents.ContainsKey(expectedStatusRow),
+            $"Footer should be at row {expectedStatusRow}");
+        Assert.Contains("Speed: 4.0 MB/s | Total: 40 MB", console.RowContents[expectedStatusRow]);
+
+        // Verify earlier status updates are NOT stacked as separate lines
+        Assert.DoesNotContain("Speed: 1.0 MB/s", console.RowContents[expectedStatusRow]);
+        Assert.DoesNotContain("Speed: 2.0 MB/s", console.RowContents[expectedStatusRow]);
+        Assert.DoesNotContain("Speed: 3.0 MB/s", console.RowContents[expectedStatusRow]);
     }
 }
