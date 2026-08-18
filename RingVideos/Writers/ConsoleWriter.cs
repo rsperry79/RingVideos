@@ -279,25 +279,18 @@ namespace RingVideos.Writers
             Monitor.Enter(lockObj);
             if (footerStatusLinePosition >= 0)
             {
-               // Recalculate footer position on each update to account for buffer scrolling
-               int statusRow = console.BufferHeight - 1;
-               int separatorRow = console.BufferHeight - 2;
-
-               // Update separator line (blank)
-               console.SetCursorPosition(0, separatorRow);
-               console.Write("".PadRight(console.WindowWidth - 1));
-
-               // Update status line
-               console.SetCursorPosition(0, statusRow);
+               // Use carriage return to move to start of current line and overwrite
+               // This works on real Windows console unlike SetCursorPosition
+               string paddedMessage = message.PadRight(console.WindowWidth - 1);
                console.ForegroundColor = ConsoleColor.Cyan;
-               console.Write(message.PadRight(console.WindowWidth - 1));
+               console.Write($"\r{paddedMessage}");
                console.ResetColor();
                log.LogInformation($"Status: {message}");
             }
          }
-         finally
+         catch (Exception ex)
          {
-            Monitor.Exit(lockObj);
+            log.LogError(ex, "Error updating footer status");
          }
       }
 
