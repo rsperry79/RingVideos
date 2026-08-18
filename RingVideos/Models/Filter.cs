@@ -69,7 +69,6 @@ namespace RingVideos.Models
 
    internal class Config
    {
-      public Authentication Authentication { get; set; }
       public Filter Filter { get; set; }
    }
 }

@@ -1,3 +1,4 @@
+using KoenZomers.Ring.Api;
 using RingVideos.Models;
 
 namespace RingVideos.Tests;
@@ -34,10 +35,10 @@ public class ApplicationTests
     }
 
     [Fact]
-    public void Authentication_CanBeCreatedWithDefaults()
+    public void RingCredentials_CanBeCreatedWithDefaults()
     {
         // Arrange & Act
-        var auth = new Authentication();
+        var auth = new RingCredentials();
 
         // Assert
         Assert.NotNull(auth);
@@ -46,47 +47,53 @@ public class ApplicationTests
     }
 
     [Fact]
-    public void Authentication_StoresUserNameAndPassword()
+    public void RingCredentials_StoresUserNameAndPassword()
     {
         // Arrange
-        var auth = new Authentication();
+        var auth = new RingCredentials();
         var username = "test@example.com";
         var password = "testPassword";
 
         // Act
         auth.UserName = username;
-        auth.ClearTextPassword = password;
+        auth.Password = password;
 
         // Assert
         Assert.Equal(username, auth.UserName);
-        Assert.Equal(password, auth.ClearTextPassword);
+        Assert.Equal(password, auth.Password);
     }
 
     [Fact]
-    public void Authentication_EncryptionRoundTrip()
+    public void CredentialStore_SaveAndLoadRoundTrip()
     {
         // Arrange
-        var auth = new Authentication
+        var path = Path.Combine(Path.GetTempPath(), $"ringvideos-test-auth-{Guid.NewGuid()}.json");
+        var auth = new RingCredentials
         {
             UserName = "test@example.com",
-            ClearTextPassword = "testPassword",
-            ClearTextRefreshToken = "testRefresh"
+            Password = "testPassword",
+            RefreshToken = "testRefresh"
         };
 
-        // Act
-        auth.Encrypt();
-        var encryptedPassword = auth.Password;
-        var encryptedRefresh = auth.RefreshToken;
+        try
+        {
+            // Act
+            CredentialStore.Save(path, auth);
+            var raw = File.ReadAllText(path);
+            var loaded = CredentialStore.Load(path);
 
-        auth.Decrypt();
-        var decryptedPassword = auth.ClearTextPassword;
-        var decryptedRefresh = auth.ClearTextRefreshToken;
-
-        // Assert
-        Assert.NotNull(encryptedPassword);
-        Assert.NotEqual("testPassword", encryptedPassword);
-        Assert.Equal("testPassword", decryptedPassword);
-        Assert.Equal("testRefresh", decryptedRefresh);
+            // Assert
+            Assert.DoesNotContain("testPassword", raw);
+            Assert.DoesNotContain("testRefresh", raw);
+            Assert.Equal("test@example.com", loaded.UserName);
+            Assert.Equal("testPassword", loaded.Password);
+            Assert.Equal("testRefresh", loaded.RefreshToken);
+        }
+        finally
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
     }
 
     [Fact]
@@ -246,26 +253,32 @@ public class ApplicationTests
     }
 
     [Fact]
-    public void Authentication_CanBeEncryptedForStorage()
+    public void CredentialStore_EncryptsBeforeWritingToDisk()
     {
         // Arrange
-        var auth = new Authentication
+        var path = Path.Combine(Path.GetTempPath(), $"ringvideos-test-auth-{Guid.NewGuid()}.json");
+        var auth = new RingCredentials
         {
             UserName = "user@ring.com",
-            ClearTextPassword = "SecurePassword123!",
-            ClearTextRefreshToken = "refresh_abc123"
+            Password = "SecurePassword123!",
+            RefreshToken = "refresh_abc123"
         };
 
-        // Act
-        auth.Encrypt();
-        var encryptedPassword = auth.Password;
-        var encryptedRefresh = auth.RefreshToken;
+        try
+        {
+            // Act
+            CredentialStore.Save(path, auth);
+            var raw = File.ReadAllText(path);
 
-        // Assert
-        Assert.NotNull(encryptedPassword);
-        Assert.NotNull(encryptedRefresh);
-        Assert.NotEqual("SecurePassword123!", encryptedPassword);
-        Assert.NotEqual("refresh_abc123", encryptedRefresh);
+            // Assert
+            Assert.DoesNotContain("SecurePassword123!", raw);
+            Assert.DoesNotContain("refresh_abc123", raw);
+        }
+        finally
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
     }
 
     [Fact]

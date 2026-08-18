@@ -1,13 +1,12 @@
 using System;
 using System.IO;
-using System.Text.Json;
-using RingVideos.Models;
+using KoenZomers.Ring.Api;
 
 namespace RingVideos
 {
     /// <summary>
     /// Command-line utility to set up Ring API credentials in AppData for testing.
-    /// Uses the same Authentication class and encryption as the RingVideos application.
+    /// Uses the same CredentialStore the RingVideos application uses.
     ///
     /// Usage:
     ///   dotnet run SetupTestCredentials.cs -- "your-email@example.com" "your-password"
@@ -80,51 +79,17 @@ namespace RingVideos
 
         static void SaveCredentials(string email, string password)
         {
-            var appDataPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "RingVideosData"
-            );
+            var authPath = GetConfigPath();
 
-            // Create directory if it doesn't exist
-            if (!Directory.Exists(appDataPath))
-            {
-                Directory.CreateDirectory(appDataPath);
-                Console.WriteLine($"📁 Created directory: {appDataPath}");
-            }
-
-            // Create Authentication object and encrypt
-            var auth = new Authentication
+            var creds = new RingCredentials
             {
                 UserName = email,
-                ClearTextPassword = password,
-                ClearTextRefreshToken = ""  // Empty for now
+                Password = password,
+                RefreshToken = ""  // Empty for now
             };
 
-            auth.Encrypt();
-
-            // Create Config object
-            var config = new
-            {
-                Authentication = new
-                {
-                    UserName = auth.UserName,
-                    Password = auth.Password,
-                    RefreshToken = auth.RefreshToken,
-                    EncryptionIV = auth.EncryptionIV
-                },
-                Filter = new
-                {
-                    TakeLatestOnly = false,
-                    StartDate = (string?)null,
-                    EndDate = (string?)null
-                }
-            };
-
-            var configPath = Path.Combine(appDataPath, "RingVideosConfig.json");
-            var json = JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
-
-            File.WriteAllText(configPath, json);
-            Console.WriteLine($"✅ Wrote config: {configPath}");
+            CredentialStore.Save(authPath, creds);
+            Console.WriteLine($"✅ Wrote credentials: {authPath}");
         }
 
         static string GetConfigPath()
@@ -132,7 +97,7 @@ namespace RingVideos
             return Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                 "RingVideosData",
-                "RingVideosConfig.json"
+                "auth.json"
             );
         }
 

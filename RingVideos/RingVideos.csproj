@@ -42,6 +42,9 @@
     <ProjectReference Include="..\external\RingApi\Api\Api.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="RingVideos.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <None Update="appSettings.json">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </None>

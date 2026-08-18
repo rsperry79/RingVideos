@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using KoenZomers.Ring.Api;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -155,7 +156,7 @@ namespace RingVideos
             // Authenicate() already tries the refresh token first and only falls back to
             // username/password (which triggers 2FA) if that fails. Wiping it here forced a full
             // 2FA re-auth on every single run since -u/-p are supplied on every invocation.
-            ringApp.Auth.ClearTextPassword = password;
+            ringApp.Auth.Password = password;
          }
          if (!string.IsNullOrEmpty(path))
          {
@@ -206,42 +207,68 @@ namespace RingVideos
       }
       private static bool SetAuthenticationValues()
       {
-         if (string.IsNullOrWhiteSpace(ringApp.Auth.UserName))
+         var error = ResolveAuthError(ringApp.Auth, System.Environment.GetEnvironmentVariable);
+         if (error != null)
          {
-            var un = System.Environment.GetEnvironmentVariable("RingUsername");
-            if (!string.IsNullOrWhiteSpace(un))
-            {
-               ringApp.Auth.UserName = un;
-            }
-            else
-            {
-               cw.Error("A Ring username is required");
-               return false;
-            }
+            cw.Error(error);
+            return false;
          }
-         if (string.IsNullOrWhiteSpace(ringApp.Auth.ClearTextPassword))
+
+         return true;
+      }
+
+      /// <summary>
+      /// Fills in <paramref name="auth"/> from the RefreshToken/RingUsername/RingPassword environment
+      /// variables where it's missing values, then checks whether what's left is enough to attempt
+      /// authentication with. A refresh token alone is sufficient - Authenicate() tries it before
+      /// falling back to username/password, so username/password are only required when there's no
+      /// refresh token to try first. Pure aside from mutating <paramref name="auth"/> and calling
+      /// <paramref name="getEnvVar"/>, so it's testable without a real environment or console.
+      /// </summary>
+      /// <returns>Null if authentication can proceed, otherwise a user-facing error message.</returns>
+      internal static string ResolveAuthError(RingCredentials auth, Func<string, string> getEnvVar)
+      {
+         if (string.IsNullOrWhiteSpace(auth.RefreshToken))
          {
-            var pw = System.Environment.GetEnvironmentVariable("RingPassword");
-            if (!string.IsNullOrWhiteSpace(pw))
+            var rt = getEnvVar("RefreshToken");
+            if (!string.IsNullOrWhiteSpace(rt))
             {
-               ringApp.Auth.ClearTextPassword = pw;
-            }
-            else
-            {
-               cw.Error("A Ring password is required");
-               return false;
+               auth.RefreshToken = rt;
             }
          }
 
-         if (string.IsNullOrWhiteSpace(ringApp.Auth.RefreshToken))
+         if (!string.IsNullOrWhiteSpace(auth.RefreshToken))
          {
-            var rt = System.Environment.GetEnvironmentVariable("RefreshToken");
-            if (!string.IsNullOrWhiteSpace(rt))
+            return null;
+         }
+
+         if (string.IsNullOrWhiteSpace(auth.UserName))
+         {
+            var un = getEnvVar("RingUsername");
+            if (!string.IsNullOrWhiteSpace(un))
             {
-               ringApp.Auth.RefreshToken = rt;
+               auth.UserName = un;
+            }
+            else
+            {
+               return "A Ring username is required";
             }
          }
-         return true;
+
+         if (string.IsNullOrWhiteSpace(auth.Password))
+         {
+            var pw = getEnvVar("RingPassword");
+            if (!string.IsNullOrWhiteSpace(pw))
+            {
+               auth.Password = pw;
+            }
+            else
+            {
+               return "A Ring password is required";
+            }
+         }
+
+         return null;
       }
 
       internal static void ShowLog()

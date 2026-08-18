@@ -83,8 +83,8 @@ namespace RingVideos
                 services.AddSingleton<StartArgs>(new StartArgs(args));
                 services.AddSingleton<RingVideoApplication>();
                 services.AddSingleton<CommandHelper>();
+                services.AddSingleton<DownloadHelper>();
                 services.AddSingleton<Filter>();
-                services.AddSingleton<Authentication>();
                 //services.AddSingleton<ConsoleFormatter, CustomConsoleFormatter>();
                 services.AddSingleton<Writers.IConsole, Writers.SystemConsole>();
                 services.AddSingleton<ConsoleWriter>();

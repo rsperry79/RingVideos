@@ -37,11 +37,13 @@ namespace RingVideos
       private static DateTime downloadStartTime = DateTime.Now;
       private static CancellationTokenSource speedUpdateCancellation;
       public Filter Filter { get; set; } = new();
-      public Authentication Auth { get; set; } = new();
+      public RingCredentials Auth { get; set; } = new();
       IConfiguration config;
       public readonly string SavedSettingsFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), @"RingVideosData");
       public readonly string SavedSettingsFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RingVideosData","RingVideosConfig.json");
+      public readonly string AuthFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RingVideosData", "auth.json");
       private ConsoleWriter cw;
+      private DownloadHelper downloadHelper;
       private ConcurrentBag<FailedDownload> newFailures = new();
       private HashSet<string> loadedEventIds = new();
       private string reportsDirectory;
@@ -50,11 +52,12 @@ namespace RingVideos
       private static readonly object rawApiLogLock = new object();
       private Dictionary<Guid, string> locationNameCache = new();
       private Dictionary<long, Guid> deviceIdToLocationId = new();
-      public RingVideoApplication(ILogger<RingVideoApplication> logger, IConfiguration config, ConsoleWriter consoleWriter)
+      public RingVideoApplication(ILogger<RingVideoApplication> logger, IConfiguration config, ConsoleWriter consoleWriter, DownloadHelper downloadHelper)
       {
          this.log = logger;
          this.config = config;
          this.cw = consoleWriter;
+         this.downloadHelper = downloadHelper;
          try
          {
             ReadSettings();
@@ -68,25 +71,15 @@ namespace RingVideos
 
       private void ReadSettings()
       {
-         
+         string contents = null;
          try
          {
-            var contents = System.IO.File.ReadAllText(SavedSettingsFile);
+            contents = System.IO.File.ReadAllText(SavedSettingsFile);
             var settings = JsonSerializer.Deserialize<Config>(contents);
-            this.Auth = settings.Authentication.Decrypt();
-            this.Filter = settings.Filter;
+            this.Filter = settings.Filter ?? new Filter();
          }
-         catch(Exception)
+         catch (Exception)
          {
-            var tmpAuth = config.GetSection("Authentication").Get<Authentication>();
-            if (tmpAuth != null)
-            {
-               this.Auth = tmpAuth.Decrypt();
-            }
-            else
-            {
-               this.Auth = new Authentication();
-            }
             this.Filter = config.GetSection("Filter").Get<Filter>();
             if (this.Filter == null)
             {
@@ -94,11 +87,48 @@ namespace RingVideos
             }
          }
 
+         this.Auth = CredentialStore.Load(AuthFile);
+         if (string.IsNullOrWhiteSpace(this.Auth.RefreshToken) && string.IsNullOrWhiteSpace(this.Auth.Password))
+         {
+            MigrateLegacyAuth(contents);
+         }
       }
+
+      /// <summary>
+      /// One-time migration for credentials previously stored inline in RingVideosConfig.json's
+      /// "Authentication" property, back when the console app owned encryption itself. Only runs
+      /// when no auth.json exists yet; the migrated credentials are written out via CredentialStore
+      /// so the old inline copy is dropped the next time settings are saved.
+      /// </summary>
+      private void MigrateLegacyAuth(string savedSettingsContents)
+      {
+         if (string.IsNullOrEmpty(savedSettingsContents))
+            return;
+
+         try
+         {
+            using var doc = JsonDocument.Parse(savedSettingsContents);
+            if (!doc.RootElement.TryGetProperty("Authentication", out var authElement))
+               return;
+
+            var legacyAuth = CredentialStore.LoadFromJson(authElement.GetRawText());
+            if (!string.IsNullOrWhiteSpace(legacyAuth.RefreshToken) || !string.IsNullOrWhiteSpace(legacyAuth.Password))
+            {
+               this.Auth = legacyAuth;
+               CredentialStore.Save(AuthFile, this.Auth);
+               log.LogInformation("Migrated saved credentials from {oldFile} to {authFile}", SavedSettingsFile, AuthFile);
+            }
+         }
+         catch (Exception exe)
+         {
+            log.LogWarning(exe, "Failed to migrate legacy credentials from {oldFile}", SavedSettingsFile);
+         }
+      }
+
       private void SaveSettings(DateTime? lastSuccessUtc, DateTime? lastFailureUtc)
       {
 
-         Auth.Encrypt();
+         CredentialStore.Save(AuthFile, Auth);
          //Set "next dates" on filter
          if (lastFailureUtc.HasValue && !Filter.Snapshots)
          {
@@ -118,14 +148,13 @@ namespace RingVideos
 
          var conf = new Config()
          {
-            Authentication = this.Auth,
             Filter = this.Filter
          };
          var config = JsonUtil.Serialize(conf, JsonMode.Pretty);
 
          System.IO.File.WriteAllText(this.SavedSettingsFile, config);
          log.LogInformation("Settings saved to {settingsFile}", this.SavedSettingsFile);
-         log.LogInformation($"Saved refresh token (length: {Auth.ClearTextRefreshToken?.Length ?? 0})");
+         log.LogInformation($"Saved refresh token (length: {Auth.RefreshToken?.Length ?? 0})");
       }
 
       /// <summary>
@@ -272,83 +301,66 @@ namespace RingVideos
       internal async Task<Session> Authenicate()
       {
          Session session = null;
-         if (!string.IsNullOrWhiteSpace(this.Auth.ClearTextRefreshToken))
+         try
          {
-            try
-            {
-               // Use refresh token from previous session
-               cw.Info($"Attempting refresh token auth (token length: {this.Auth.ClearTextRefreshToken.Length})");
-               await AnsiConsole.Status()
-                   .StartAsync("Authenticating using refresh token from previous session...", async ctx =>
+            await AnsiConsole.Status()
+                .StartAsync("Authenticating...", async ctx =>
+                {
+                   ctx.Spinner(Spinner.Known.Dots2);
+                   ctx.SpinnerStyle(Style.Parse("yellow"));
+
+                   var progress = new Progress<AuthProgressEventArgs>(e =>
                    {
-                      ctx.Spinner(Spinner.Known.Dots2); ;
-                      ctx.SpinnerStyle(Style.Parse("yellow"));
-                      session = await Session.GetSessionByRefreshToken(this.Auth.ClearTextRefreshToken);
-                      Thread.Sleep(500);
+                      ctx.Status(e.Message);
+                      if (e.IsWarning)
+                      {
+                         cw.Warning(e.Message);
+                         log.LogWarning(e.Message);
+                      }
+                      else
+                      {
+                         cw.Info(e.Message);
+                      }
                    });
-               cw.Info("Refresh token auth succeeded!");
-            }
-            catch(Exception ex)
-            {
-               cw.Warning($"Refresh token auth failed: {ex.Message}");
-               log.LogWarning(ex, "Refresh token authentication failed");
-               session = null;
-            }
-         }
-         else
-         {
-            cw.Info("No cached refresh token found");
-         }
 
-         if (session == null)
-         {
-            try
-            {
-               // Use the username and password provided
-               await AnsiConsole.Status()
-                   .StartAsync("Authenticating using provided username and password.", async ctx => {
-                      ctx.Spinner(Spinner.Known.Dots2); ;
-                      ctx.SpinnerStyle(Style.Parse("yellow"));
-                      session = new Session(this.Auth.UserName, this.Auth.ClearTextPassword);
-                      await session.Authenticate();
-                      Thread.Sleep(500);
-                   });
-               
-            }
-            catch (KoenZomers.Ring.Api.Exceptions.TwoFactorAuthenticationRequiredException)
-            {
-               // Two factor authentication is enabled on the account. The above Authenticate() will trigger a text message to be sent. Ask for the token sent in that message here.
-               cw.Info($"Two factor authentication enabled on this account, please enter the token received in the text message on your phone:");
-               var token = Console.ReadLine();
-               if (!string.IsNullOrEmpty(token))
-               {
-                  log.LogInformation("2FA token received");
-               }
+                   session = await Session.AuthenticateWithCredentials(
+                      this.Auth,
+                      twoFactorAuthCodeProvider: () =>
+                      {
+                         // Two factor authentication is enabled on the account - a text message with a
+                         // code will have just been sent. Ask for it here.
+                         cw.Info("Two factor authentication enabled on this account, please enter the token received in the text message on your phone:");
+                         var token = Console.ReadLine();
+                         if (!string.IsNullOrEmpty(token))
+                         {
+                            log.LogInformation("2FA token received");
+                         }
+                         return Task.FromResult(token);
+                      },
+                      progress: progress);
 
-               // Authenticate again using the two factor token
-               await session.Authenticate(twoFactorAuthCode: token);
-            }
-            catch (KoenZomers.Ring.Api.Exceptions.ThrottledException e)
-            {
-               cw.Error(e.Message);
-            }
-            catch (KoenZomers.Ring.Api.Exceptions.AuthenticationFailedException e)
-            {
-               cw.Error($"{e.Message}: Please validate your credentials");
-            }
-            catch (System.Net.WebException e)
-            {
-               cw.Error($"{e.Message}: Connection failed, please validate your credentials.");
-            }
-            catch(Exception exe)
-            {
-               cw.Error($"{exe.Message}");
-            }
+                   Thread.Sleep(500);
+                });
+         }
+         catch (KoenZomers.Ring.Api.Exceptions.ThrottledException e)
+         {
+            cw.Error(e.Message);
+         }
+         catch (KoenZomers.Ring.Api.Exceptions.AuthenticationFailedException e)
+         {
+            cw.Error($"{e.Message}: Please validate your credentials");
+         }
+         catch (System.Net.WebException e)
+         {
+            cw.Error($"{e.Message}: Connection failed, please validate your credentials.");
+         }
+         catch (Exception exe)
+         {
+            cw.Error($"{exe.Message}");
          }
 
          if (session != null && session.OAuthToken != null)
          {
-           this.Auth.ClearTextRefreshToken = session.OAuthToken.RefreshToken;
             SaveSettings(null, null);
          }
          return session;
@@ -378,8 +390,6 @@ namespace RingVideos
                cw.Error("Authentication failed. Please check your credentials.");
                return 999;
             }
-            this.Auth.ClearTextRefreshToken = this.ringSession.OAuthToken.RefreshToken;
-
             if (Filter.DownloadPath == null)
             {
                cw.Error("A valid download path '--path' argument is required");
@@ -473,6 +483,47 @@ namespace RingVideos
 
                cw.Highlight($"Found {(allDevices.Doorbots?.Count ?? 0) + (allDevices.Chimes?.Count ?? 0) + (allDevices.StickupCams?.Count ?? 0)} total devices across all locations");
 
+               // Camera/doorbell health (connectivity, battery, wifi signal) comes embedded directly in
+               // the ring_devices response already fetched above - no separate health API call needed.
+               void PrintDeviceHealth(string name, eNt.DeviceHealth health)
+               {
+                  if (health == null)
+                  {
+                     cw.Info($"    {name}: (no health data returned)");
+                     return;
+                  }
+
+                  var parts = new List<string>();
+                  if (health.Connected.HasValue)
+                     parts.Add(health.Connected.Value ? "connected" : "DISCONNECTED");
+                  if (!string.IsNullOrEmpty(health.RssiCategory))
+                     parts.Add($"wifi {health.RssiCategory}" + (health.Rssi.HasValue ? $" ({health.Rssi}dBm)" : ""));
+                  if (health.BatteryPercentage.HasValue && health.BatteryPercentage.Value > 0)
+                     parts.Add($"battery {health.BatteryPercentage}%");
+                  else if (!string.IsNullOrEmpty(health.BatteryVoltageCategory))
+                     parts.Add($"battery voltage {health.BatteryVoltageCategory}");
+                  if (!string.IsNullOrEmpty(health.FirmwareVersionStatus))
+                     parts.Add(health.FirmwareVersionStatus);
+
+                  var line = $"    {name}: {(parts.Count > 0 ? string.Join(", ", parts) : "no telemetry")}";
+                  var isConcern = health.Connected == false ||
+                     string.Equals(health.RssiCategory, "poor", StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(health.BatteryVoltageCategory, "poor", StringComparison.OrdinalIgnoreCase);
+                  if (isConcern)
+                     cw.Warning(line);
+                  else
+                     cw.Info(line);
+               }
+
+               if (allDevices.StickupCams.Count > 0 || allDevices.Doorbots.Count > 0 || allDevices.AuthorizedDoorbots.Count > 0)
+               {
+                  cw.Info("Camera health:");
+                  foreach (var d in allDevices.StickupCams)
+                     PrintDeviceHealth(d.Description ?? $"Device {d.Id}", d.Health);
+                  foreach (var d in allDevices.Doorbots.Concat(allDevices.AuthorizedDoorbots))
+                     PrintDeviceHealth(d.Description ?? $"Device {d.Id}", d.Health);
+               }
+
                // Build a device-id -> location-id lookup. The doorbot history API (used per-download)
                // does not embed location_id on its nested doorbot object, only the device-list APIs do -
                // so downloads must resolve location via this lookup keyed on device id, not ding.Doorbot.LocationId.
@@ -496,7 +547,18 @@ namespace RingVideos
                         if (loc.Id.HasValue && !string.IsNullOrEmpty(loc.Name))
                         {
                            locationNameCache[loc.Id.Value] = loc.Name;
-                           cw.Info($"  {loc.Name} ({loc.Id})");
+                           var deviceCount = deviceIdToLocationId.Count(kvp => kvp.Value == loc.Id.Value);
+                           cw.Info($"  {loc.Name} ({loc.Id}) - {deviceCount} device(s){(loc.IsOwner == false ? " [shared]" : string.Empty)}");
+
+                           // Ring only returns devices this account has been explicitly granted access to on
+                           // shared locations - a low count here can mean cameras exist but aren't visible to
+                           // this account, not that the app failed to find them.
+                           if (loc.IsOwner == false && deviceCount <= 1)
+                           {
+                              cw.Warning($"    '{loc.Name}' is a shared location with only {deviceCount} visible device(s). " +
+                                 "If you expect more cameras here, ask the Ring account owner to grant this account access " +
+                                 "to them under Shared Users in the Ring app - newly added devices aren't shared automatically.");
+                           }
                         }
                      }
                   }
@@ -520,6 +582,8 @@ namespace RingVideos
                      }
                   }
                }
+
+               GenerateCameraHealthReport(reportsDirectory, allDevices, locationNameCache);
 
                // Build device list from all locations
                var allDeviceList = new DeviceList().ExtractDevices(allDevices);
@@ -640,8 +704,10 @@ namespace RingVideos
 
                results = (await Task.WhenAll(tasks.ToArray())).ToList();
 
-               // Stop the speed update task
+               // Stop the speed update task and do one final refresh so the footer reflects the
+               // now-zero active-download count instead of whatever was last drawn mid-run.
                speedUpdateCancellation?.Cancel();
+               UpdateFooterStatus();
                var success = results.Count(r => r.success == true);
                var successfulCreatedDates = results.Where(r => r.success == true).Select(r => r.ding.CreatedAtDateTime).ToList();
                lastSuccess = successfulCreatedDates.Any() ? successfulCreatedDates.Max() : null;
@@ -806,6 +872,7 @@ namespace RingVideos
             int attempt = 1;
             Exception lastException = null;
             string lastWebResponseBody = null;
+            KoenZomers.Ring.Api.Entities.DownloadRecording downloadInfo = null;
             do
             {
                attempt++;
@@ -813,7 +880,21 @@ namespace RingVideos
                //log.LogInformation($"{itemCount + 1} - {filename}... ");
                try
                {
-                  await this.ringSession.GetDoorbotHistoryRecording(ding, filename);
+                  // Fetching the download info (URL + size, when the Ring service provides it) is a
+                  // required round-trip before we can download the bytes either way, so this doubles
+                  // as the check for whether the file we'd end up with already exists on disk.
+                  if (downloadInfo == null)
+                  {
+                     downloadInfo = await this.ringSession.GetDoorbotHistoryRecordingInfo(ding);
+                  }
+
+                  if (downloadHelper.ValidateMediaExists(filename, downloadInfo.Size))
+                  {
+                     cw.UpdateFinal(lw, "Exists");
+                     return (true, ding);
+                  }
+
+                  await this.ringSession.GetDoorbotHistoryRecording(downloadInfo, filename);
                   long fileSizeBytes = new FileInfo(filename).Length;
                   Interlocked.Add(ref totalBytesDownloaded, fileSizeBytes);
                   var speed = GetDownloadSpeed();
@@ -1079,6 +1160,61 @@ namespace RingVideos
          }
       }
 
+      /// <summary>
+      /// Appends a snapshot of camera/doorbell connectivity, battery and wifi health to
+      /// reports/camera_health.tsv on every run, using the "health" object already embedded in the
+      /// ring_devices response - so a degraded battery or dropped-connection camera shows up in the
+      /// report history even if it never causes a download failure.
+      /// </summary>
+      private void GenerateCameraHealthReport(string reportsDir, eNt.Devices allDevices, Dictionary<Guid, string> locationNames)
+      {
+         try
+         {
+            if (!Directory.Exists(reportsDir))
+               Directory.CreateDirectory(reportsDir);
+
+            string tsvPath = Path.Combine(reportsDir, "camera_health.tsv");
+            bool writeHeader = !System.IO.File.Exists(tsvPath);
+
+            var rows = new List<string>();
+
+            void AddRow(string name, long? id, string kind, Guid? locationId, eNt.DeviceHealth health)
+            {
+               string locName = locationId.HasValue && locationNames.TryGetValue(locationId.Value, out var ln) ? ln : "";
+               string connected = health?.Connected?.ToString() ?? "";
+               string batteryPct = health?.BatteryPercentage?.ToString() ?? "";
+               string batteryVoltCat = health?.BatteryVoltageCategory ?? "";
+               string rssiCat = health?.RssiCategory ?? "";
+               string rssi = health?.Rssi?.ToString() ?? "";
+               string fwStatus = health?.FirmwareVersionStatus ?? "";
+               string ota = health?.OtaStatus ?? "";
+               rows.Add($"{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}\t{locName}\t{name}\t{id}\t{kind}\t{connected}\t{batteryPct}\t{batteryVoltCat}\t{rssiCat}\t{rssi}\t{fwStatus}\t{ota}");
+            }
+
+            foreach (var d in allDevices.StickupCams)
+               AddRow(d.Description ?? $"Device {d.Id}", d.Id, d.Kind, d.LocationId, d.Health);
+            foreach (var d in allDevices.Doorbots.Concat(allDevices.AuthorizedDoorbots))
+               AddRow(d.Description ?? $"Device {d.Id}", d.Id, d.Kind, d.LocationId, d.Health);
+
+            if (rows.Count == 0)
+               return;
+
+            using (var writer = new StreamWriter(tsvPath, append: true, Encoding.UTF8))
+            {
+               if (writeHeader)
+                  writer.WriteLine("Timestamp\tLocationName\tCameraName\tCameraId\tKind\tConnected\tBatteryPercentage\tBatteryVoltageCategory\tWifiRssiCategory\tRssi\tFirmwareStatus\tOtaStatus");
+               foreach (var row in rows)
+                  writer.WriteLine(row);
+            }
+
+            log.LogInformation($"Appended {rows.Count} camera health entries to {tsvPath}");
+         }
+         catch (Exception exe)
+         {
+            log.LogError(exe, "Failed to generate camera health report");
+         }
+      }
+
       private List<FailedDownload> LoadExistingFailuresList(string reportsDir)
       {
          var existing = new List<FailedDownload>();
@@ -1156,7 +1292,7 @@ namespace RingVideos
             {
                // Keep as a fallback credential only - don't discard a cached refresh token here,
                // see the matching note in Worker.SetFilterAndAuthValues.
-               this.Auth.ClearTextPassword = password;
+               this.Auth.Password = password;
             }
             this.ringSession = await Authenicate();
          }
