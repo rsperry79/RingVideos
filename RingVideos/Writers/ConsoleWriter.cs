@@ -281,7 +281,11 @@ namespace RingVideos.Writers
             {
                try
                {
-                  // Position to footer line and overwrite with carriage return
+                  // Clear and overwrite the footer status line
+                  console.SetCursorPosition(0, footerStatusLinePosition);
+                  // First clear the entire line with spaces
+                  console.Write(new string(' ', console.WindowWidth - 1));
+                  // Then move back to start and write the message
                   console.SetCursorPosition(0, footerStatusLinePosition);
                   string paddedMessage = message.PadRight(console.WindowWidth - 1);
                   console.ForegroundColor = ConsoleColor.Cyan;
@@ -290,7 +294,7 @@ namespace RingVideos.Writers
                }
                catch (Exception ex) when (ex is IOException || ex is ArgumentOutOfRangeException)
                {
-                  log.LogError(ex, "Failed to position footer status");
+                  log.LogError(ex, "Failed to update footer status");
                }
                log.LogInformation($"Status: {message}");
             }
