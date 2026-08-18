@@ -15,7 +15,7 @@ namespace RingVideos
    class Program
    {
       public static string logFileBaseName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RingVideosData", "ringvideos.log");
-      public static string configFileName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RingVideosData", "ringvideos.log");
+      public static string configFileName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RingVideosData", "RingVideosConfig.json");
       private static IConfigurationRoot Configuration;
       public static void Main(string[] args)
       {

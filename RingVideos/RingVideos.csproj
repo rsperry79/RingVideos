@@ -45,7 +45,7 @@
     <InternalsVisibleTo Include="RingVideos.Tests" />
   </ItemGroup>
   <ItemGroup>
-    <None Update="appSettings.json">
+    <None Update="appsettings.json">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </None>
   </ItemGroup>
