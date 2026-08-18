@@ -6,31 +6,44 @@ using System.Threading;
 namespace RingVideos.Writers
 {
    /// <summary>
-   /// Renders a small "pinned" region - up to N live download rows, a separator, and a
-   /// footer status line - that always stays at the bottom of the terminal, with general
-   /// log messages scrolling normally above it.
+   /// Renders a small "pinned" region - a handful of live download rows, a separator, and a
+   /// footer status line - that always stays at the bottom of the terminal, with general log
+   /// messages scrolling normally above it.
    ///
-   /// Why this shape: an earlier version gave every download item its own permanent
-   /// absolute buffer row and tried to keep the footer's absolute row in sync by detecting
-   /// and compensating for buffer scrolls (via Console.BufferHeight arithmetic). That broke
-   /// down on real terminals - particularly Windows Terminal/ConPTY - where BufferHeight
-   /// does not reliably describe a stable coordinate space that tracks the visible viewport.
-   /// Trying to reason about "the buffer scrolled N times" from BufferHeight alone silently
-   /// desynced item/footer rows from what was actually on screen, which is what caused the
-   /// footer status to appear to pile up as new lines instead of overwriting in place.
+   /// This has gone through two prior designs, both of which broke down on real terminals:
    ///
-   /// Instead, every write here is relative to the cursor's ACTUAL, freshly-queried position
-   /// (Console.CursorTop), never a cached/assumed absolute row. The class enforces one
-   /// invariant: after any public method returns, the cursor is parked at column 0 of the
-   /// region's last line (the footer). Updating a single row is a small in-place jump (up N
-   /// rows, write, back down); inserting new scrolling log content is an erase-region /
-   /// write-line / redraw-region sequence. Because the region and the log both move via the
-   /// same natural relative cursor motion, they can never drift apart the way independently
-   /// computed absolute rows could.
+   /// 1. Every download item got its own permanent absolute buffer row, with the footer's
+   ///    row cached from Console.BufferHeight and "compensated" when a scroll was detected.
+   ///    Windows Terminal/ConPTY doesn't honor Console.SetBufferSize or reliably tie
+   ///    BufferHeight to the visible viewport, so rows silently drifted from what was
+   ///    actually on screen.
    ///
-   /// The active region is deliberately small and fixed (default 10, matching the app's
-   /// download concurrency semaphore) rather than one row per item - a handful of rows
-   /// always fits inside any real terminal window, so no buffer growth is ever required.
+   /// 2. A fixed/dynamic-height region addressed via Console.SetCursorPosition, using
+   ///    Console.CursorTop queries to find "where am I right now" before every move. This
+   ///    fixed the drift, but introduced gaps between consecutive log lines: on Windows
+   ///    Terminal, CursorTop/GetCursorPosition require a round trip through ConPTY (a Device
+   ///    Status Report query sent to the terminal, then a blocking read of the response) -
+   ///    interleaved with rapid writes, that round trip is neither instant nor guaranteed to
+   ///    reflect what has actually rendered yet, so the computed position could be stale.
+   ///
+   /// The fix: never query cursor position at all. Every move here is a RELATIVE ANSI
+   /// sequence (cursor up/down N rows, carriage return, erase-to-end-of-line) applied on top
+   /// of ConsoleWriter's own tracked notion of "how tall is the region I last drew"
+   /// (lastDrawnRegionHeight). Relative moves need no response from the terminal - they're
+   /// fire-and-forget writes, just like printing text. The class enforces one invariant:
+   /// after any public method returns, the cursor is at column 0 of the region's last line
+   /// (the footer). Updating a single row is a small relative jump (up N, write, back down
+   /// N) entirely within already-drawn rows; inserting new scrolling log content moves up to
+   /// the region's top, overwrites it with the new line via a real newline (preserving
+   /// scrollback), then redraws the region below it.
+   ///
+   /// The active region is deliberately sized to actual occupancy (not a constant): with no
+   /// downloads active it's just separator+footer (2 rows), growing only as slots fill in up
+   /// to maxActiveSlots (default 10, matching the app's download concurrency semaphore) and
+   /// shrinking again as items are released. This keeps it small enough to always fit inside
+   /// any real terminal window, and avoids a fixed height forcing a wall of blank rows to be
+   /// redrawn under every log line before any downloads start.
+   ///
    /// Items that finish are expected to call <see cref="ReleaseLineWriter"/>, which prints
    /// their final line into the scrolling log and frees the slot for reuse.
    /// </summary>
@@ -42,11 +55,10 @@ namespace RingVideos.Writers
       private readonly int maxActiveSlots;
       private readonly LineWriter[] slots;
       private string footerText = "";
-      // Height (in rows) of the pinned region as it was last actually drawn on screen -
-      // i.e. what EraseRegionAndMoveToTop must clear. Recomputed by RedrawRegion from
-      // current slot occupancy every time it runs, so idle/empty slots never cost a blank
-      // row: with nothing active the region is just separator+footer (height 2), and it
-      // only grows to cover slot rows that are genuinely in use.
+      // Height (in rows) of the pinned region as it was last actually drawn on screen - the
+      // sole source of truth for where things are, since we never query the terminal for
+      // cursor position. Recomputed by RedrawRegionRows from current slot occupancy every
+      // time it runs.
       private int lastDrawnRegionHeight;
 
       public ConsoleWriter(ILogger<ConsoleWriter> log, int maxActiveSlots = 10) : this(log, new SystemConsole(), maxActiveSlots)
@@ -72,15 +84,12 @@ namespace RingVideos.Writers
          return highest;
       }
 
-      /// <summary>How many rows RedrawRegion would draw right now: active rows up to the highest occupied slot, plus separator + footer.</summary>
-      private int CurrentRegionHeight => HighestOccupiedSlotIndex() + 1 + 2;
-
       private void InitializeRegion()
       {
          try
          {
             Monitor.Enter(lockObj);
-            RedrawRegion();
+            RedrawRegionRows();
          }
          finally
          {
@@ -89,10 +98,10 @@ namespace RingVideos.Writers
       }
 
       /// <summary>
-      /// Historically grew the console buffer to fit one absolute row per download. The
-      /// pinned-region design no longer needs that - the live region is always small - so
-      /// this is now just a defensive minimum-size check kept for API compatibility with
-      /// existing call sites.
+      /// Historically grew the console buffer to fit one absolute row per download. Neither
+      /// that nor the buffer height matters to this design anymore - every move is relative -
+      /// so this is now just a defensive minimum-size best-effort call, kept for API
+      /// compatibility with existing call sites.
       /// </summary>
       public void EnsureBufferHeight(int expectedLineCount)
       {
@@ -115,73 +124,78 @@ namespace RingVideos.Writers
          }
       }
 
-      /// <summary>Clears every row the region occupied as of the last redraw, leaving the cursor parked at the region's top-left.</summary>
-      private void EraseRegionAndMoveToTop()
-      {
-         int height = Math.Max(2, lastDrawnRegionHeight);
-         int bottom = console.CursorTop;
-         int top = Math.Max(0, bottom - (height - 1));
-         console.SetCursorPosition(0, top);
-         for (int i = 0; i < height; i++)
-         {
-            console.Write(new string(' ', Math.Max(0, console.WindowWidth - 1)));
-            if (i < height - 1)
-            {
-               console.WriteLine();
-            }
-            else
-            {
-               console.SetCursorPosition(0, top);
-            }
-         }
-      }
-
-      /// <summary>Redraws active slots up to the highest occupied one, the separator, and the footer, assuming the cursor is at the region's top-left. Leaves the cursor parked at column 0 of the footer row.</summary>
-      private void RedrawRegion()
+      /// <summary>
+      /// Redraws active slots up to the highest occupied one, the separator, and the footer,
+      /// assuming the cursor is already at the region's top-left (either nothing has been
+      /// drawn yet, or a caller just moved there). Each row is cleared to end-of-line before
+      /// being written so shrinking content never leaves stale trailing characters. Leaves
+      /// the cursor parked at column 0 of the footer row.
+      /// </summary>
+      private void RedrawRegionRows()
       {
          int activeRows = HighestOccupiedSlotIndex() + 1;
          for (int i = 0; i < activeRows; i++)
          {
             var lw = slots[i];
-            console.Write((lw?.RenderedLine ?? string.Empty).PadRight(Math.Max(0, console.WindowWidth - 1)));
+            console.ClearToEndOfLine();
+            console.Write(lw?.RenderedLine ?? string.Empty);
             console.WriteLine();
          }
+
+         console.ClearToEndOfLine();
          console.WriteLine(); // separator (blank)
 
-         int footerRow = console.CursorTop;
-         console.Write(footerText.PadRight(Math.Max(0, console.WindowWidth - 1)));
-         console.SetCursorPosition(0, footerRow);
+         console.ClearToEndOfLine();
+         console.Write(footerText);
+         console.CarriageReturn();
 
          lastDrawnRegionHeight = activeRows + 2;
       }
 
-      /// <summary>Jumps up from the parked footer row to the given active slot (which must already be within the currently drawn region), writes, then restores the parked position.</summary>
-      private void WriteSlot(int slotIndex, string text)
+      /// <summary>Moves from the parked footer row up to the current region's top-left, ready for RedrawRegionRows.</summary>
+      private void MoveToRegionTop()
       {
-         int bottom = console.CursorTop;
-         int rowsUpFromBottom = (lastDrawnRegionHeight - 1) - slotIndex;
-         int targetRow = Math.Max(0, bottom - rowsUpFromBottom);
-         console.SetCursorPosition(0, targetRow);
-         console.Write(text.PadRight(Math.Max(0, console.WindowWidth - 1)));
-         console.SetCursorPosition(0, bottom);
+         int height = Math.Max(2, lastDrawnRegionHeight);
+         console.MoveCursorUp(height - 1);
+         console.CarriageReturn();
       }
 
-      /// <summary>Erases the region, writes one new line into the scrolling log above it, then redraws the region.</summary>
-      private void WriteLogLine(string message, MessageType msgType)
+      /// <summary>Grows/redraws the region in place - used when a newly assigned slot falls outside what's currently drawn.</summary>
+      private void RedrawInPlace()
+      {
+         MoveToRegionTop();
+         RedrawRegionRows();
+      }
+
+      /// <summary>Moves up to the region's top, overwrites it with one new line of scrolling log content (preserved via a real newline), then redraws the region below it.</summary>
+      private void InsertLogLineAndRedraw(string message, MessageType msgType)
       {
          try
          {
             Monitor.Enter(lockObj);
-            EraseRegionAndMoveToTop();
+            MoveToRegionTop();
+            console.ClearToEndOfLine();
             SetColorFor(msgType);
             console.WriteLine(message);
             console.ResetColor();
-            RedrawRegion();
+            RedrawRegionRows();
          }
          finally
          {
             Monitor.Exit(lockObj);
          }
+      }
+
+      /// <summary>Jumps up from the parked footer row to the given active slot (which must already be within the currently drawn region), writes, then jumps back down. Both moves stay within already-drawn rows, so no new scrollback content is created.</summary>
+      private void WriteSlot(int slotIndex, string text)
+      {
+         int rowsUp = (lastDrawnRegionHeight - 1) - slotIndex;
+         console.MoveCursorUp(rowsUp);
+         console.CarriageReturn();
+         console.ClearToEndOfLine();
+         console.Write(text);
+         console.CarriageReturn();
+         console.MoveCursorDown(rowsUp);
       }
 
       private void SetColorFor(MessageType msgType)
@@ -228,12 +242,7 @@ namespace RingVideos.Writers
          try
          {
             Monitor.Enter(lockObj);
-            int max = -1;
-            for (int i = 0; i < slots.Length; i++)
-            {
-               if (slots[i] != null) max = i;
-            }
-            return max;
+            return HighestOccupiedSlotIndex();
          }
          finally
          {
@@ -243,22 +252,22 @@ namespace RingVideos.Writers
 
       public void Warning(string message)
       {
-         WriteLogLine(message, MessageType.Warning);
+         InsertLogLineAndRedraw(message, MessageType.Warning);
          log.LogWarning(message);
       }
       public void Highlight(string message)
       {
-         WriteLogLine(message, MessageType.Highlight);
+         InsertLogLineAndRedraw(message, MessageType.Highlight);
          log.LogInformation(message);
       }
       public void Info(string message)
       {
-         WriteLogLine(message, MessageType.Info);
+         InsertLogLineAndRedraw(message, MessageType.Info);
          log.LogInformation(message);
       }
       public void Error(string message)
       {
-         WriteLogLine(message, MessageType.Error);
+         InsertLogLineAndRedraw(message, MessageType.Error);
          log.LogError(message);
       }
 
@@ -282,9 +291,7 @@ namespace RingVideos.Writers
             int neededHeight = slotIndex + 1 + 2;
             if (neededHeight > lastDrawnRegionHeight)
             {
-               // This slot sits below what's currently drawn - grow the region to cover it.
-               EraseRegionAndMoveToTop();
-               RedrawRegion();
+               RedrawInPlace();
             }
             else
             {
@@ -318,25 +325,21 @@ namespace RingVideos.Writers
          try
          {
             Monitor.Enter(lockObj);
-            if (message.Length > lw.InitialStatusLength)
-            {
-               lw.InitialStatusLength = message.Length;
-            }
             lw.LastMessage = message;
             lw.LastMessageType = msgType;
 
-            int bottom = console.CursorTop;
-            int rowsUpFromBottom = (lastDrawnRegionHeight - 1) - lw.LinePosition;
-            int targetRow = Math.Max(0, bottom - rowsUpFromBottom);
-            console.SetCursorPosition(0, targetRow);
+            int rowsUp = (lastDrawnRegionHeight - 1) - lw.LinePosition;
+            console.MoveCursorUp(rowsUp);
+            console.CarriageReturn();
+            console.ClearToEndOfLine();
             console.Write($"{lw.InitialMessage}  ");
             SetColorFor(msgType);
-            var paddedStatus = message.PadRight(lw.InitialStatusLength);
-            console.Write(paddedStatus);
+            console.Write(message);
             console.ResetColor();
-            console.SetCursorPosition(0, bottom);
+            console.CarriageReturn();
+            console.MoveCursorDown(rowsUp);
 
-            lw.RenderedLine = $"{lw.InitialMessage}  {paddedStatus}";
+            lw.RenderedLine = $"{lw.InitialMessage}  {message}";
             log.LogInformation($"{lw.InitialMessage}  {message}");
          }
          finally
@@ -384,11 +387,12 @@ namespace RingVideos.Writers
                slots[lw.LinePosition] = null;
             }
 
-            EraseRegionAndMoveToTop();
+            MoveToRegionTop();
+            console.ClearToEndOfLine();
             SetColorFor(msgType);
             console.WriteLine(finalText);
             console.ResetColor();
-            RedrawRegion();
+            RedrawRegionRows();
 
             log.LogInformation(finalText);
          }
@@ -406,13 +410,12 @@ namespace RingVideos.Writers
             footerText = message ?? string.Empty;
 
             // Cursor is parked at column 0 of the footer row per the class invariant - just
-            // overwrite it in place, no absolute-row lookup needed.
-            int footerRow = console.CursorTop;
-            console.SetCursorPosition(0, footerRow);
+            // overwrite it in place, no movement needed.
+            console.ClearToEndOfLine();
             console.ForegroundColor = ConsoleColor.Cyan;
-            console.Write(footerText.PadRight(Math.Max(0, console.WindowWidth - 1)));
+            console.Write(footerText);
             console.ResetColor();
-            console.SetCursorPosition(0, footerRow);
+            console.CarriageReturn();
 
             log.LogInformation($"Status: {message}");
          }

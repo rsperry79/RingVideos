@@ -73,4 +73,27 @@ public class FakeConsole : IConsole
         BufferWidth = width;
         BufferHeight = height;
     }
+
+    public void MoveCursorUp(int rows)
+    {
+        if (rows > 0) CursorTop = Math.Max(0, CursorTop - rows);
+    }
+
+    public void MoveCursorDown(int rows)
+    {
+        if (rows > 0) CursorTop = Math.Min(BufferHeight - 1, CursorTop + rows);
+    }
+
+    public void CarriageReturn()
+    {
+        CursorLeft = 0;
+    }
+
+    public void ClearToEndOfLine()
+    {
+        if (RowContents.TryGetValue(CursorTop, out var row) && CursorLeft < row.Length)
+        {
+            RowContents[CursorTop] = row.Substring(0, CursorLeft);
+        }
+    }
 }
