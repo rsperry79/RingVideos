@@ -8,10 +8,11 @@ namespace RingVideos.Tests;
 public class ConsoleWriterTests
 {
     private const int DefaultMaxActiveSlots = 10;
-    // RegionHeight = maxActiveSlots + 2 (separator + footer). Footer sits on the last row
-    // of that region, so starting from a fresh console (cursor at row 0), the footer lands
-    // on row (maxActiveSlots + 1).
-    private static int ExpectedFooterRowFromStart(int maxActiveSlots = DefaultMaxActiveSlots) => maxActiveSlots + 1;
+    // The region is sized dynamically to actual occupancy (active rows + separator +
+    // footer), not a fixed maxActiveSlots height - with nothing active yet, that's just
+    // separator + footer (height 2), so starting from a fresh console (cursor at row 0),
+    // the footer lands on row 1.
+    private const int IdleFooterRow = 1;
 
     private static ConsoleWriter CreateWriter(FakeConsole console, int maxActiveSlots = DefaultMaxActiveSlots)
     {
@@ -36,9 +37,8 @@ public class ConsoleWriterTests
 
         writer.UpdateFooterStatus("Active Downloads: 5");
 
-        int expectedRow = ExpectedFooterRowFromStart();
-        Assert.True(console.RowContents.ContainsKey(expectedRow), $"Footer status should be on row {expectedRow}.");
-        Assert.Contains("Active Downloads: 5", console.RowContents[expectedRow]);
+        Assert.True(console.RowContents.ContainsKey(IdleFooterRow), $"Footer status should be on row {IdleFooterRow}.");
+        Assert.Contains("Active Downloads: 5", console.RowContents[IdleFooterRow]);
     }
 
     [Fact]
@@ -54,19 +54,38 @@ public class ConsoleWriterTests
         writer.UpdateFooterStatus("Speed: 2.0 MB/s");
         writer.UpdateFooterStatus("Speed: 3.0 MB/s");
 
-        int expectedRow = ExpectedFooterRowFromStart();
-        Assert.Contains("Speed: 3.0 MB/s", console.RowContents[expectedRow]);
-        Assert.DoesNotContain("Speed: 1.0 MB/s", console.RowContents[expectedRow]);
-        Assert.DoesNotContain("Speed: 2.0 MB/s", console.RowContents[expectedRow]);
+        Assert.Contains("Speed: 3.0 MB/s", console.RowContents[IdleFooterRow]);
+        Assert.DoesNotContain("Speed: 1.0 MB/s", console.RowContents[IdleFooterRow]);
+        Assert.DoesNotContain("Speed: 2.0 MB/s", console.RowContents[IdleFooterRow]);
 
         // No other row should ever have received footer text.
         foreach (var kvp in console.RowContents)
         {
-            if (kvp.Key != expectedRow)
+            if (kvp.Key != IdleFooterRow)
             {
                 Assert.DoesNotContain("MB/s", kvp.Value);
             }
         }
+    }
+
+    [Fact]
+    public void ConsecutiveLogLines_WithNoActiveItems_LeaveNoBlankGapBetweenThem()
+    {
+        // Regression test: before any downloads start (e.g. printing a list of location
+        // names), each Info() call used to fully redraw the fixed maxActiveSlots-height
+        // region beneath it - producing a wall of blank lines between consecutive log
+        // lines. With nothing active, the region must be just separator+footer (2 rows),
+        // so consecutive log lines land on consecutive rows.
+        var console = new FakeConsole { BufferHeight = 200, WindowWidth = 80 };
+        var writer = CreateWriter(console);
+
+        writer.Info("Narnia (0d45a443-ad11-4660-9b08-1d592875634a)");
+        writer.Info("Doom Doom (684e7cdb-45e1-4b1f-ac6f-e3211592a5ad)");
+
+        var narniaRow = console.RowContents.Single(kvp => kvp.Value.Contains("Narnia")).Key;
+        var doomDoomRow = console.RowContents.Single(kvp => kvp.Value.Contains("Doom Doom")).Key;
+
+        Assert.Equal(narniaRow + 1, doomDoomRow);
     }
 
     [Fact]

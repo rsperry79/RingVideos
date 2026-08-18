@@ -42,6 +42,12 @@ namespace RingVideos.Writers
       private readonly int maxActiveSlots;
       private readonly LineWriter[] slots;
       private string footerText = "";
+      // Height (in rows) of the pinned region as it was last actually drawn on screen -
+      // i.e. what EraseRegionAndMoveToTop must clear. Recomputed by RedrawRegion from
+      // current slot occupancy every time it runs, so idle/empty slots never cost a blank
+      // row: with nothing active the region is just separator+footer (height 2), and it
+      // only grows to cover slot rows that are genuinely in use.
+      private int lastDrawnRegionHeight;
 
       public ConsoleWriter(ILogger<ConsoleWriter> log, int maxActiveSlots = 10) : this(log, new SystemConsole(), maxActiveSlots)
       {
@@ -56,7 +62,18 @@ namespace RingVideos.Writers
          InitializeRegion();
       }
 
-      private int RegionHeight => maxActiveSlots + 2; // active rows + separator + footer
+      private int HighestOccupiedSlotIndex()
+      {
+         int highest = -1;
+         for (int i = 0; i < slots.Length; i++)
+         {
+            if (slots[i] != null) highest = i;
+         }
+         return highest;
+      }
+
+      /// <summary>How many rows RedrawRegion would draw right now: active rows up to the highest occupied slot, plus separator + footer.</summary>
+      private int CurrentRegionHeight => HighestOccupiedSlotIndex() + 1 + 2;
 
       private void InitializeRegion()
       {
@@ -73,16 +90,16 @@ namespace RingVideos.Writers
 
       /// <summary>
       /// Historically grew the console buffer to fit one absolute row per download. The
-      /// pinned-region design no longer needs that - the live region is always a small,
-      /// fixed number of rows - so this is now just a defensive minimum-size check kept for
-      /// API compatibility with existing call sites.
+      /// pinned-region design no longer needs that - the live region is always small - so
+      /// this is now just a defensive minimum-size check kept for API compatibility with
+      /// existing call sites.
       /// </summary>
       public void EnsureBufferHeight(int expectedLineCount)
       {
          try
          {
             Monitor.Enter(lockObj);
-            var minNeeded = RegionHeight + 5;
+            var minNeeded = maxActiveSlots + 2 + 5;
             if (console.BufferHeight >= minNeeded)
                return;
 
@@ -98,16 +115,17 @@ namespace RingVideos.Writers
          }
       }
 
-      /// <summary>Clears every row of the pinned region, leaving the cursor parked at the region's top-left.</summary>
+      /// <summary>Clears every row the region occupied as of the last redraw, leaving the cursor parked at the region's top-left.</summary>
       private void EraseRegionAndMoveToTop()
       {
+         int height = Math.Max(2, lastDrawnRegionHeight);
          int bottom = console.CursorTop;
-         int top = Math.Max(0, bottom - (RegionHeight - 1));
+         int top = Math.Max(0, bottom - (height - 1));
          console.SetCursorPosition(0, top);
-         for (int i = 0; i < RegionHeight; i++)
+         for (int i = 0; i < height; i++)
          {
             console.Write(new string(' ', Math.Max(0, console.WindowWidth - 1)));
-            if (i < RegionHeight - 1)
+            if (i < height - 1)
             {
                console.WriteLine();
             }
@@ -118,10 +136,11 @@ namespace RingVideos.Writers
          }
       }
 
-      /// <summary>Redraws every active slot, the separator, and the footer, assuming the cursor is at the region's top-left. Leaves the cursor parked at column 0 of the footer row.</summary>
+      /// <summary>Redraws active slots up to the highest occupied one, the separator, and the footer, assuming the cursor is at the region's top-left. Leaves the cursor parked at column 0 of the footer row.</summary>
       private void RedrawRegion()
       {
-         for (int i = 0; i < maxActiveSlots; i++)
+         int activeRows = HighestOccupiedSlotIndex() + 1;
+         for (int i = 0; i < activeRows; i++)
          {
             var lw = slots[i];
             console.Write((lw?.RenderedLine ?? string.Empty).PadRight(Math.Max(0, console.WindowWidth - 1)));
@@ -132,13 +151,15 @@ namespace RingVideos.Writers
          int footerRow = console.CursorTop;
          console.Write(footerText.PadRight(Math.Max(0, console.WindowWidth - 1)));
          console.SetCursorPosition(0, footerRow);
+
+         lastDrawnRegionHeight = activeRows + 2;
       }
 
-      /// <summary>Jumps up from the parked footer row to the given active slot, writes, then restores the parked position.</summary>
+      /// <summary>Jumps up from the parked footer row to the given active slot (which must already be within the currently drawn region), writes, then restores the parked position.</summary>
       private void WriteSlot(int slotIndex, string text)
       {
          int bottom = console.CursorTop;
-         int rowsUpFromBottom = (RegionHeight - 1) - slotIndex;
+         int rowsUpFromBottom = (lastDrawnRegionHeight - 1) - slotIndex;
          int targetRow = Math.Max(0, bottom - rowsUpFromBottom);
          console.SetCursorPosition(0, targetRow);
          console.Write(text.PadRight(Math.Max(0, console.WindowWidth - 1)));
@@ -257,7 +278,18 @@ namespace RingVideos.Writers
 
             var lw = new LineWriter(slotIndex);
             slots[slotIndex] = lw;
-            WriteSlot(slotIndex, "");
+
+            int neededHeight = slotIndex + 1 + 2;
+            if (neededHeight > lastDrawnRegionHeight)
+            {
+               // This slot sits below what's currently drawn - grow the region to cover it.
+               EraseRegionAndMoveToTop();
+               RedrawRegion();
+            }
+            else
+            {
+               WriteSlot(slotIndex, "");
+            }
             return lw;
          }
          finally
@@ -294,7 +326,7 @@ namespace RingVideos.Writers
             lw.LastMessageType = msgType;
 
             int bottom = console.CursorTop;
-            int rowsUpFromBottom = (RegionHeight - 1) - lw.LinePosition;
+            int rowsUpFromBottom = (lastDrawnRegionHeight - 1) - lw.LinePosition;
             int targetRow = Math.Max(0, bottom - rowsUpFromBottom);
             console.SetCursorPosition(0, targetRow);
             console.Write($"{lw.InitialMessage}  ");
