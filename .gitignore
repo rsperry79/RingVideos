@@ -3,6 +3,11 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
+# ApiTester output - contains raw Ring API responses (device/location names, pre-signed download
+# URLs with security tokens). Never commit this.
+ApiTesterResults*/
+**/ApiTesterResults*/
+
 # User-specific files
 *.suo
 *.user
