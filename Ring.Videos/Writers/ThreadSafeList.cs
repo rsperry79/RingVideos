@@ -82,7 +82,7 @@ namespace Ring.Videos.Writers
         {
             lock (_lock)
             {
-                return ((IEnumerable<T>)_list).GetEnumerator();
+                return new List<T>(_list).GetEnumerator();
             }
         }
 
@@ -90,7 +90,7 @@ namespace Ring.Videos.Writers
         {
             lock (_lock)
             {
-                return ((IEnumerable)_list).GetEnumerator();
+                return ((IEnumerable)new List<T>(_list)).GetEnumerator();
             }
         }
 
