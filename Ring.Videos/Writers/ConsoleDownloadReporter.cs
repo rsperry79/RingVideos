@@ -33,6 +33,7 @@ namespace Ring.Videos.Writers
             return lw;
         }
 
+        public void WriteItem(object item, string message) => cw.Write((LineWriter)item, message);
         public void UpdateItem(object item, string message) => cw.Update((LineWriter)item, message);
         public void CompleteItem(object item, string message) => cw.UpdateFinal((LineWriter)item, message);
         public void ErrorItem(object item, string message) => cw.UpdateError((LineWriter)item, message);
