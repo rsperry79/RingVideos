@@ -105,9 +105,11 @@ namespace Ring.Videos
                     services.AddSingleton<IConsole, SystemConsole>();
                     services.AddSingleton<ConsoleWriter>();
                     services.AddSingleton<IDownloadReporter, ConsoleDownloadReporter>();
+                    services.AddSingleton<ICredentialStore, CredentialStore>();
                     services.AddSingleton(sp => new RingVideoService(
                         sp.GetRequiredService<ILogger<RingVideoService>>(),
                         sp.GetRequiredService<IDownloadReporter>(),
+                        sp.GetRequiredService<ICredentialStore>(),
                         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RingVideosData"),
                         hostContext.Configuration.GetSection("LocationNames").Get<Dictionary<string, string>>(),
                         hostContext.Configuration.GetSection("Filter").Get<Filter>()));
