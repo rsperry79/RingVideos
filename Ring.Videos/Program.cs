@@ -1,22 +1,22 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
 using Serilog;
 using Serilog.Events;
 
-using Ring.Videos.Interfaces;
-
 using KoenZomers.Ring.Api;
 using KoenZomers.Ring.Api.Interfaces;
 using KoenZomers.Ring.Api.Clients;
+using KoenZomers.Ring.Api.Models;
 
 using Ring.Videos.Writers;
-using Ring.Videos.Models;
 using Ring.Videos.Logging;
 
 namespace Ring.Videos
@@ -40,7 +40,7 @@ namespace Ring.Videos
              .Build();
 
             // Configure Serilog
-            var loggerConfig = LoggerFactory.GetDefaultConfiguration(minimumLevel ?? LogEventLevel.Information)
+            var loggerConfig = Ring.Videos.Logging.LoggerFactory.GetDefaultConfiguration(minimumLevel ?? LogEventLevel.Information)
                 .ReadFrom.Configuration(Configuration);
 
             Log.Logger = loggerConfig.CreateLogger();
@@ -100,13 +100,17 @@ namespace Ring.Videos
                     services.AddSingleton<IDeviceManagementClient, DeviceManagementClient>();
 
                     // Application Layer
-                    services.AddSingleton<RingVideoApplication>();
                     services.AddSingleton<CommandHelper>();
-                    services.AddSingleton<DownloadHelper>();
-                    services.AddSingleton<Filter>();
                     //services.AddSingleton<ConsoleFormatter, CustomConsoleFormatter>();
                     services.AddSingleton<IConsole, SystemConsole>();
                     services.AddSingleton<ConsoleWriter>();
+                    services.AddSingleton<IDownloadReporter, ConsoleDownloadReporter>();
+                    services.AddSingleton(sp => new RingVideoService(
+                        sp.GetRequiredService<ILogger<RingVideoService>>(),
+                        sp.GetRequiredService<IDownloadReporter>(),
+                        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RingVideosData"),
+                        hostContext.Configuration.GetSection("LocationNames").Get<Dictionary<string, string>>(),
+                        hostContext.Configuration.GetSection("Filter").Get<Filter>()));
 
                     // Give a Ctrl+C-interrupted run enough time to finish in-flight downloads and
                     // write the failure report/settings before the host force-tears-down the process.

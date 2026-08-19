@@ -1,6 +1,8 @@
 using System;
 using System.Threading;
 
+using KoenZomers.Ring.Api;
+
 using Serilog;
 
 namespace Ring.Videos
@@ -30,7 +32,7 @@ namespace Ring.Videos
 
                 Cts.Cancel();
 
-                if (RingVideoApplication.IsRunActive)
+                if (RingVideoService.IsRunActive)
                 {
                     Log.Information("Ctrl+C received - finishing in-flight downloads and saving progress... (press Ctrl+C again to force quit)");
                 }

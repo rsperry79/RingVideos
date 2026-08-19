@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using KoenZomers.Ring.Api;
+using KoenZomers.Ring.Api.Models;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -17,8 +18,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 using Ring.Videos.Writers;
-
-using Ring.Videos.Models;
 
 using Serilog;
 namespace Ring.Videos
@@ -29,7 +28,7 @@ namespace Ring.Videos
 
 
         private static ILogger<Worker> log;
-        private static RingVideoApplication ringApp;
+        private static RingVideoService ringVideoService;
         private static StartArgs sArgs;
         private static IConfiguration config;
         private static CommandHelper cmdHelper;
@@ -38,10 +37,10 @@ namespace Ring.Videos
         private static IHostApplicationLifetime appLifetime;
         private static bool quitRequested = false;
 
-        public Worker(ILogger<Worker> log, IConfiguration config, RingVideoApplication ringApp, StartArgs sArgs, CommandHelper cmdHelper, ConsoleWriter consoleWriter, IHostApplicationLifetime appLifetime)
+        public Worker(ILogger<Worker> log, IConfiguration config, RingVideoService ringVideoService, StartArgs sArgs, CommandHelper cmdHelper, ConsoleWriter consoleWriter, IHostApplicationLifetime appLifetime)
         {
             Worker.log = log;
-            Worker.ringApp = ringApp;
+            Worker.ringVideoService = ringVideoService;
             Worker.sArgs = sArgs;
             Worker.config = config;
             Worker.cmdHelper = cmdHelper;
@@ -72,7 +71,7 @@ namespace Ring.Videos
                     {
                         break;
                     }
-                    ringApp.FilterMessage("Saved filter settings (use command flags to override):");
+                    ringVideoService.PrintFilterMessage("Saved filter settings (use command flags to override):");
                     log.LogInformation("RingVideos> "); // Log prompt for audit trail
                     var line = Console.ReadLine();
                     if (!string.IsNullOrEmpty(line))
@@ -82,7 +81,7 @@ namespace Ring.Videos
 
                     if (line == null)
                     {
-                        // stdin closed (e.g. Ctrl+Z / piped input ended) — exit gracefully
+                        // stdin closed (e.g. Ctrl+Z / piped input ended) - exit gracefully
                         break;
                     }
 
@@ -139,7 +138,7 @@ namespace Ring.Videos
 
             if (SetAuthenticationValues())
             {
-                return await ringApp.Run();
+                return await ringVideoService.Run(ShutdownSignal.Cts.Token);
             }
             else
             {
@@ -153,54 +152,54 @@ namespace Ring.Videos
         {
             if (!string.IsNullOrEmpty(username))
             {
-                ringApp.Auth.UserName = username;
+                ringVideoService.Auth.UserName = username;
             }
             if (!string.IsNullOrEmpty(password))
             {
                 // Keep the password as a fallback credential, but don't discard a cached refresh token -
-                // Authenicate() already tries the refresh token first and only falls back to
+                // Authenticate() already tries the refresh token first and only falls back to
                 // username/password (which triggers 2FA) if that fails. Wiping it here forced a full
                 // 2FA re-auth on every single run since -u/-p are supplied on every invocation.
-                ringApp.Auth.Password = password;
+                ringVideoService.Auth.Password = password;
             }
             if (!string.IsNullOrEmpty(path))
             {
-                ringApp.Filter.DownloadPath = path;
+                ringVideoService.Filter.DownloadPath = path;
             }
             if (start != DateTime.MinValue)
             {
-                ringApp.Filter.StartDateTime = start;
+                ringVideoService.Filter.StartDateTime = start;
             }
             if (end != DateTime.MaxValue)
             {
-                ringApp.Filter.EndDateTime = end;
+                ringVideoService.Filter.EndDateTime = end;
             }
             else
             {
-                ringApp.Filter.EndDateTime = DateTime.Now;
+                ringVideoService.Filter.EndDateTime = DateTime.Now;
             }
 
-            ringApp.Filter.OnlyStarred = starred;
-            ringApp.Filter.OnlyPersonDetected = personOnly;
-            ringApp.Filter.Kind = string.IsNullOrWhiteSpace(kind) ? null : kind;
-            ringApp.Filter.DetectionType = string.IsNullOrWhiteSpace(detectionType) ? null : detectionType;
-            ringApp.Filter.Snapshots = snapshot;
+            ringVideoService.Filter.OnlyStarred = starred;
+            ringVideoService.Filter.OnlyPersonDetected = personOnly;
+            ringVideoService.Filter.Kind = string.IsNullOrWhiteSpace(kind) ? null : kind;
+            ringVideoService.Filter.DetectionType = string.IsNullOrWhiteSpace(detectionType) ? null : detectionType;
+            ringVideoService.Filter.Snapshots = snapshot;
 
             if (maxcount != 0)
             {
-                ringApp.Filter.VideoCount = maxcount;
+                ringVideoService.Filter.VideoCount = maxcount;
             }
-            if (!ringApp.Filter.StartDateTime.HasValue)
+            if (!ringVideoService.Filter.StartDateTime.HasValue)
             {
-                ringApp.Filter.StartDateTime = DateTime.MinValue;
+                ringVideoService.Filter.StartDateTime = DateTime.MinValue;
             }
-            if (!ringApp.Filter.EndDateTime.HasValue)
+            if (!ringVideoService.Filter.EndDateTime.HasValue)
             {
-                ringApp.Filter.EndDateTime = DateTime.MaxValue;
+                ringVideoService.Filter.EndDateTime = DateTime.MaxValue;
             }
             if (deviceId.HasValue && deviceId.Value > 0)
             {
-                ringApp.Filter.DeviceId = deviceId;
+                ringVideoService.Filter.DeviceId = deviceId;
             }
         }
 
@@ -212,7 +211,7 @@ namespace Ring.Videos
         }
         private static bool SetAuthenticationValues()
         {
-            var error = ResolveAuthError(ringApp.Auth);
+            var error = RingVideoService.ResolveAuthError(ringVideoService.Auth);
             if (error != null)
             {
                 cw.Error(error);
@@ -220,32 +219,6 @@ namespace Ring.Videos
             }
 
             return true;
-        }
-
-        /// <summary>
-        /// Checks whether <paramref name="auth"/> has enough to attempt authentication with.
-        /// A refresh token alone is sufficient - Authenticate() tries it before falling back to
-        /// username/password, so username/password are only required when there's no refresh token.
-        /// </summary>
-        /// <returns>Null if authentication can proceed, otherwise a user-facing error message.</returns>
-        internal static string ResolveAuthError(RingCredentials auth)
-        {
-            if (!string.IsNullOrWhiteSpace(auth.RefreshToken))
-            {
-                return null;
-            }
-
-            if (string.IsNullOrWhiteSpace(auth.UserName))
-            {
-                return "A Ring username is required";
-            }
-
-            if (string.IsNullOrWhiteSpace(auth.Password))
-            {
-                return "A Ring password is required";
-            }
-
-            return null;
         }
 
         internal static void ShowLog()
@@ -286,7 +259,7 @@ namespace Ring.Videos
 
         internal static async Task DeviceList(string username, string password)
         {
-            await ringApp.GetDevicesList(username, password);
+            await ringVideoService.GetDevicesList(username, password);
         }
     }
 }

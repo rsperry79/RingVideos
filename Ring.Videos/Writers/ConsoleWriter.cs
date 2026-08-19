@@ -284,7 +284,7 @@ namespace Ring.Videos.Writers
                 if (slotIndex < 0)
                 {
                     // Defensive only: callers are expected to bound concurrency to maxActiveSlots
-                    // (RingVideoApplication does this via its download semaphore). Reuse slot 0
+                    // (RingVideoService does this via its download semaphore). Reuse slot 0
                     // rather than throw if that contract is ever violated.
                     slotIndex = 0;
                 }
