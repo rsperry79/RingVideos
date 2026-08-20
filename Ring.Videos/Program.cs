@@ -106,13 +106,33 @@ namespace Ring.Videos
                     services.AddSingleton<ConsoleWriter>();
                     services.AddSingleton<IDownloadReporter, ConsoleDownloadReporter>();
                     services.AddSingleton<ICredentialStore, CredentialStore>();
-                    services.AddSingleton(sp => new RingVideoService(
-                        sp.GetRequiredService<ILogger<RingVideoService>>(),
-                        sp.GetRequiredService<IDownloadReporter>(),
-                        sp.GetRequiredService<ICredentialStore>(),
-                        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RingVideosData"),
-                        hostContext.Configuration.GetSection("LocationNames").Get<Dictionary<string, string>>(),
-                        hostContext.Configuration.GetSection("Filter").Get<Filter>()));
+
+                    // Event metadata recording (sidecars)
+                    services.AddSingleton(EventRecordingOptions.CreatePrivacySafe());
+                    services.AddSingleton<DownloadedEventRecordBuilder>();
+                    services.AddSingleton<EventMetadataWriter>();
+
+                    services.AddSingleton(sp =>
+                    {
+                        var ringVideoService = new RingVideoService(
+                            sp.GetRequiredService<ILogger<RingVideoService>>(),
+                            sp.GetRequiredService<IDownloadReporter>(),
+                            sp.GetRequiredService<ICredentialStore>(),
+                            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RingVideosData"),
+                            hostContext.Configuration.GetSection("LocationNames").Get<Dictionary<string, string>>(),
+                            hostContext.Configuration.GetSection("Filter").Get<Filter>());
+
+                        // Wire up metadata writing callback
+                        var builder = sp.GetRequiredService<DownloadedEventRecordBuilder>();
+                        var writer = sp.GetRequiredService<EventMetadataWriter>();
+                        ringVideoService.OnFileDownloadedAsync = async (evt, filePath) =>
+                        {
+                            var record = builder.Build(evt, filePath, DateTime.UtcNow.AddSeconds(-5), DateTime.UtcNow);
+                            await writer.WriteEventRecordAsync(record, filePath);
+                        };
+
+                        return ringVideoService;
+                    });
 
                     // Give a Ctrl+C-interrupted run enough time to finish in-flight downloads and
                     // write the failure report/settings before the host force-tears-down the process.
