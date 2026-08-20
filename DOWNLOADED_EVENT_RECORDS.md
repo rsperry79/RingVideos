@@ -16,17 +16,19 @@ When you download Ring videos using Ring.Videos, the application can now automat
 
 ### Default Behavior (Privacy-Safe)
 
-The application writes metadata files by default:
+The application writes JSON sidecars automatically:
 
 ```
 Videos/
 ├── Front_Door_2026-08-20_10-30-45.mp4
-├── Front_Door_2026-08-20_10-30-45.metadata.json  ← Generated automatically
+├── Front_Door_2026-08-20_10-30-45.mp4.json      ← Sidecar (auto-generated)
 ├── Front_Door_2026-08-20_11-15-22.mp4
-└── Front_Door_2026-08-20_11-15-22.metadata.json
+└── Front_Door_2026-08-20_11-15-22.mp4.json      ← Sidecar (auto-generated)
 ```
 
-### Disable Metadata Files
+**Always alongside the video file, same name + `.json` extension.**
+
+### Disable Metadata Sidecars
 
 In `appsettings.json` or application configuration:
 
@@ -157,17 +159,15 @@ All options in `Ring.Videos/EventRecordingOptions.cs`:
 
 | Option | Type | Default | Purpose |
 |--------|------|---------|---------|
-| `WriteEventRecords` | bool | `true` | Enable/disable metadata file generation |
+| `WriteEventRecords` | bool | `true` | Enable/disable metadata sidecar generation |
 | `IncludeDeviceConfig` | bool | `true` | Include device settings (motions enabled, etc.) |
 | `IncludeLocationInfo` | bool | `false` | Include location address & coordinates |
 | `IncludeAccountInfo` | bool | `false` | Include account email & name |
 | `IncludeRecognizedPersons` | bool | `false` | Include face recognition results (names) |
 | `ComputeFileHash` | bool | `false` | Compute SHA256 hash of video file |
 | `ExtractVideoMetadata` | bool | `false` | Extract codec, resolution, fps (requires ffprobe) |
-| `MetadataOutputDirectory` | string | `null` | Custom output directory (null = same as video) |
-| `PrettyPrintJson` | bool | `true` | Format JSON with indentation |
+| `PrettyPrintJson` | bool | `true` | Format JSON with indentation (vs minified) |
 | `ApplicationVersion` | string | `"1.0.0"` | Version string to embed in record |
-| `MetadataFilenamePattern` | string | `"{filename}.metadata.json"` | Filename template |
 
 ### Preset Configurations
 
@@ -233,13 +233,13 @@ await writer.WriteEventRecordAsync(record, "/path/to/video.mp4");
     "IncludeRecognizedPersons": false,
     "ComputeFileHash": false,
     "ExtractVideoMetadata": false,
-    "MetadataOutputDirectory": null,
     "PrettyPrintJson": true,
-    "ApplicationVersion": "1.0.0",
-    "MetadataFilenamePattern": "{filename}.metadata.json"
+    "ApplicationVersion": "1.0.0"
   }
 }
 ```
+
+Sidecars are always written to the **same directory as the video file** with the naming convention `{videoname}.mp4.json`.
 
 ### Binding Configuration
 
@@ -368,18 +368,16 @@ EventMetadataWriter.WriteEventRecordAsync()
 
 ## File Format Details
 
-### Filename Pattern
+### Filename Convention
 
-Default: `{filename}.metadata.json`
+Sidecars are automatically generated with the same name as the video + `.json`:
 
-Supported placeholders:
-- `{filename}` - Video filename without extension
-- `{timestamp}` - ISO8601 timestamp when file was written
-- `{event_id}` - Ring event ID (would need to pass explicitly)
+```
+Video file:     Front_Door_2026-08-20_10-30-45.mp4
+Sidecar file:   Front_Door_2026-08-20_10-30-45.mp4.json
+```
 
-Examples:
-- `video_2026-08-20.mp4` → `video_2026-08-20.metadata.json`
-- With `{timestamp}` pattern → `video_2026-08-20_2026-08-20T10-35-12Z.metadata.json`
+**Always in the same directory as the video file.**
 
 ### JSON Serialization
 
@@ -399,37 +397,25 @@ Examples:
 
 ## File Structure
 
-### Metadata Directory Organization
+### Sidecar Organization
 
-**Option 1: Same Directory as Video (Default)**
+All sidecars are written to the **same directory as the video**:
+
 ```
 Videos/
-├── Front_Door_2026-08-20_10-30.mp4
-├── Front_Door_2026-08-20_10-30.metadata.json
-└── Front_Door_2026-08-20_11-15.mp4
+├── Front_Door_2026-08-20_10-30-45.mp4
+├── Front_Door_2026-08-20_10-30-45.mp4.json    ← Sidecar
+├── Front_Door_2026-08-20_11-15-22.mp4
+├── Front_Door_2026-08-20_11-15-22.mp4.json    ← Sidecar
+└── Back_Patio_2026-08-20_14-05-10.mp4
 ```
 
-**Option 2: Subdirectory**
-```json
-{
-  "MetadataOutputDirectory": "metadata"
-}
-```
-
-Results in:
-```
-Videos/
-├── Front_Door_2026-08-20_10-30.mp4
-├── metadata/
-│   └── Front_Door_2026-08-20_10-30.metadata.json
-```
-
-**Option 3: Custom Absolute Path**
-```json
-{
-  "MetadataOutputDirectory": "C:\\Audit\\Ring\\Metadata"
-}
-```
+**Benefits:**
+- ✅ Video and metadata always together
+- ✅ No subdirectories to manage
+- ✅ Tools that find .mp4 files also see the metadata
+- ✅ Simple to back up/archive together
+- ✅ Easy to delete both if needed
 
 ## Performance Considerations
 

@@ -87,37 +87,12 @@ namespace Ring.Videos
         }
 
         /// <summary>
-        /// Determine the output path for the metadata file based on options.
+        /// Generate metadata sidecar path: same directory as video with .json extension.
+        /// Example: /videos/Front_Door_2026-08-20_10-30.mp4 → /videos/Front_Door_2026-08-20_10-30.mp4.json
         /// </summary>
         private string ResolveMetadataPath(string videoFilePath)
         {
-            string videoDir = Path.GetDirectoryName(videoFilePath);
-            string videoFilename = Path.GetFileNameWithoutExtension(videoFilePath);
-
-            string outputDir = videoDir;
-
-            // If MetadataOutputDirectory is specified, use it
-            if (!string.IsNullOrWhiteSpace(_options.MetadataOutputDirectory))
-            {
-                if (Path.IsPathRooted(_options.MetadataOutputDirectory))
-                {
-                    // Absolute path
-                    outputDir = _options.MetadataOutputDirectory;
-                }
-                else
-                {
-                    // Relative path - create as subdirectory of video directory
-                    outputDir = Path.Combine(videoDir, _options.MetadataOutputDirectory);
-                }
-            }
-
-            // Apply filename pattern
-            // {event_id} would need to be passed separately if desired
-            string metadataFilename = _options.MetadataFilenamePattern
-                .Replace("{filename}", videoFilename)
-                .Replace("{timestamp}", DateTime.UtcNow.ToString("o"));
-
-            return Path.Combine(outputDir, metadataFilename);
+            return videoFilePath + ".json";
         }
 
         private string SerializeRecord(DownloadedEventRecord record)

@@ -58,13 +58,6 @@ namespace Ring.Videos
         public bool ExtractVideoMetadata { get; set; } = false;
 
         /// <summary>
-        /// Directory where DownloadedEventRecord JSON files are written.
-        /// If null or empty, defaults to same directory as downloaded video.
-        /// If set to a special value like "metadata", creates a "metadata" subdirectory.
-        /// </summary>
-        public string MetadataOutputDirectory { get; set; }
-
-        /// <summary>
         /// Whether to pretty-print JSON (more readable, larger file size) or minify it.
         /// Default: true (for readability)
         /// </summary>
@@ -77,17 +70,9 @@ namespace Ring.Videos
         public string ApplicationVersion { get; set; } = "1.0.0";
 
         /// <summary>
-        /// Filename pattern for event records. Supports placeholders:
-        /// {filename} = video filename without extension
-        /// {event_id} = Ring event ID
-        /// {timestamp} = ISO8601 timestamp
-        /// Default: "{filename}.metadata.json"
-        /// </summary>
-        public string MetadataFilenamePattern { get; set; } = "{filename}.metadata.json";
-
-        /// <summary>
         /// Create a copy of options with default privacy-safe settings.
         /// Disables location, account, and recognized persons data.
+        /// JSON sidecars written alongside video files.
         /// </summary>
         public static EventRecordingOptions CreatePrivacySafe()
         {
@@ -108,6 +93,7 @@ namespace Ring.Videos
         /// Create a copy of options with comprehensive audit trail settings.
         /// Includes all available data for complete event documentation.
         /// WARNING: Privacy-sensitive - includes location, account, and person data.
+        /// JSON sidecars written alongside video files.
         /// </summary>
         public static EventRecordingOptions CreateAuditTrail()
         {
@@ -127,6 +113,7 @@ namespace Ring.Videos
         /// <summary>
         /// Create a copy of options optimized for minimal file size.
         /// Disables optional data and uses minified JSON.
+        /// JSON sidecars written alongside video files.
         /// </summary>
         public static EventRecordingOptions CreateMinimal()
         {
