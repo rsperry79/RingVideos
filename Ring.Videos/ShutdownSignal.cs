@@ -1,7 +1,7 @@
 using System;
 using System.Threading;
 
-using KoenZomers.Ring.Api;
+using Ring.Api;
 
 using Serilog;
 

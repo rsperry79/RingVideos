@@ -1,4 +1,4 @@
-﻿# Ring Videos Downloader
+# Ring Videos Downloader
 
 [![Build Status](https://github.com/mmckechney/RingVideos/actions/workflows/dotnet.yml/badge.svg)](https://github.com/mmckechney/RingVideos/actions/workflows/dotnet.yml)
 
@@ -60,7 +60,7 @@ Notes on detection filters:
 
 - Ring populates `cv_properties` only for events evaluated by its computer vision. Older events, `on_demand` (live view) events, and events from devices without CV may not include this data and will be excluded when `--person` or `--detection-type` is used.
 - `--person` is equivalent to `--detection-type human` (but also matches legacy events that only set `person_detected=true` without a detection type).
-- Events without a ready recording (e.g. live-view-only events or recordings still processing) are always skipped — previously these would fail at download time.
+- Events without a ready recording (e.g. live-view-only events or recordings still processing) are always skipped � previously these would fail at download time.
 
 ### Examples
 
@@ -87,7 +87,7 @@ RingVideos starred --detection-type vehicle --path D:\RingVideos
 - Version 3.2: Added event-kind and detection-type filters (`--kind`, `--detection-type`, `--person`). Events without a ready recording are now skipped automatically.
 - Version 3.0: Added additional download threading and retry options and (hopefully) better download status reporting in the console.
 - Version 2.0: Updated calling syntax to use sub-commands vs flags. Can now also create and download a current snapshot
-- Version 1.3: Updated to leverage the KoenZomers.Ring.Api Nuget package to interact with the Ring API
+- Version 1.3: Updated to leverage the Ring.Api Nuget package to interact with the Ring API
 - Version 1.2: The app will also save your settings to a local config file. This will allow you to just re-run the app with no parameters and have it download the videos since your last run.
 
 
@@ -96,4 +96,4 @@ RingVideos starred --detection-type vehicle --path D:\RingVideos
 This console app and API library  was based off of:
 - [php-ring-api](https://github.com/jeroenmoors/php-ring-api) by [Jeroen Moors](https://github.com/jeroenmoors) and
 - [Ring](https://github.com/jonathanpotts/Ring) by [Jonathan Potts](https://github.com/jonathanpotts)
-- [Ring Api](https://github.com/KoenZomers/RingApi) by [Koen Zomers](https://github.com/KoenZomers)
+- [Ring Api](https://github.com/Ring/RingApi) by [Koen Zomers](https://github.com/Ring)

@@ -11,10 +11,10 @@ using System.Linq;
 using Serilog;
 using Serilog.Events;
 
-using KoenZomers.Ring.Api;
-using KoenZomers.Ring.Api.Interfaces;
-using KoenZomers.Ring.Api.Clients;
-using KoenZomers.Ring.Api.Models;
+using Ring.Api;
+using Ring.Api.Interfaces;
+using Ring.Api.Clients;
+using Ring.Api.Models;
 
 using Ring.Videos.Writers;
 using Ring.Videos.Logging;

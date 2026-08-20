@@ -9,8 +9,8 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
-using KoenZomers.Ring.Api;
-using KoenZomers.Ring.Api.Models;
+using Ring.Api;
+using Ring.Api.Models;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
