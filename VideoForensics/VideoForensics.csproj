@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.Maui.Sdk">
+    <PropertyGroup>
+        <TargetFrameworks>net10.0-windows;net10.0-maccatalyst</TargetFrameworks>
+        <TargetFrameworks Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">$(TargetFrameworks);net10.0-android</TargetFrameworks>
+        <OutputType>WinExe</OutputType>
+        <UseMaui>true</UseMaui>
+        <SingleProject>true</SingleProject>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+
+        <DisplayName>VideoForensics</DisplayName>
+        <RootNamespace>VideoForensics</RootNamespace>
+        <ProjectName>VideoForensics</ProjectName>
+        <AssemblyName>VideoForensics</AssemblyName>
+        <Version>1.0.0</Version>
+        <Authors>DV Victim Protection Team</Authors>
+        <Description>Desktop application for forensic evidence analysis and DV victim protection</Description>
+        <Copyright>2026</Copyright>
+        <PackageLicenseExpression>EPL-2.0</PackageLicenseExpression>
+
+        <!-- Windows Specific -->
+        <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</SupportedOSPlatformVersion>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <MauiFont Include="Resources\Fonts\*.ttf" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <MauiImage Include="Resources\Images\*.png" />
+        <MauiImage Include="Resources\Images\*.svg" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+        <PackageReference Include="Controls.Expandable" Version="1.0.3" />
+        <PackageReference Include="OxyPlot.Maui" Version="2.1.2" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\external\RingApi\src\api\Ring.Api.csproj" />
+        <ProjectReference Include="..\external\RingApi\src\forensics\Ring.Api.Forensics.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <MauiXaml Update="Views\MainPage.xaml" />
+        <MauiXaml Update="Views\ForensicReportsPage.xaml" />
+        <MauiXaml Update="Views\SignalAnomaliesPage.xaml" />
+        <MauiXaml Update="Views\ChainOfCustodyPage.xaml" />
+        <MauiXaml Update="Views\AccessControlPage.xaml" />
+    </ItemGroup>
+</Project>

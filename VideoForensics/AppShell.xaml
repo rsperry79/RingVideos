@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Shell
+    x:Class="VideoForensics.AppShell"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
+
+    <TabBar>
+        <ShellContent Title="Evidence" ContentTemplate="{DataTemplate local:MainPage}" Route="MainPage" />
+        <ShellContent Title="Reports" ContentTemplate="{DataTemplate local:ForensicReportsPage}" Route="ForensicReportsPage" />
+        <ShellContent Title="Signals" ContentTemplate="{DataTemplate local:SignalAnomaliesPage}" Route="SignalAnomaliesPage" />
+        <ShellContent Title="Custody" ContentTemplate="{DataTemplate local:ChainOfCustodyPage}" Route="ChainOfCustodyPage" />
+        <ShellContent Title="Access" ContentTemplate="{DataTemplate local:AccessControlPage}" Route="AccessControlPage" />
+    </TabBar>
+</Shell>

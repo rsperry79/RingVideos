@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="VideoForensics.Views.MainPage"
+             Title="VideoForensics - Evidence Analysis">
+
+    <VerticalStackLayout Padding="15" Spacing="10">
+        <Label Text="Forensic Evidence Management" FontSize="24" FontAttributes="Bold" TextColor="#2E7D32" />
+        <Label Text="DV Victim Protection - Tamper Detection" FontSize="12" TextColor="#666" />
+
+        <Frame BorderColor="#E0E0E0" CornerRadius="8" Padding="12">
+            <VerticalStackLayout Spacing="5">
+                <Label Text="{Binding StatusMessage}" FontSize="13" TextColor="#333" />
+                <Button Text="Load Evidence" Command="{Binding LoadEvidenceCommand}" BackgroundColor="#2E7D32" TextColor="White" />
+            </VerticalStackLayout>
+        </Frame>
+
+        <CollectionView ItemsSource="{Binding EvidenceList}">
+            <CollectionView.ItemTemplate>
+                <DataTemplate>
+                    <Frame Margin="0,5" CornerRadius="8" BorderColor="#E0E0E0" Padding="12">
+                        <VerticalStackLayout Spacing="8">
+                            <Label Text="{Binding EvidenceId}" FontAttributes="Bold" />
+                            <Label Text="{Binding EventType}" FontSize="12" TextColor="#666" />
+                            <Label Text="{Binding Notes}" FontSize="11" TextColor="#999" />
+                            <HorizontalStackLayout Spacing="8">
+                                <Button Text="View" FontSize="11" WidthRequest="60" Padding="3" />
+                                <Button Text="Analyze" FontSize="11" WidthRequest="60" Padding="3" BackgroundColor="#4CAF50" />
+                            </HorizontalStackLayout>
+                        </VerticalStackLayout>
+                    </Frame>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+    </VerticalStackLayout>
+</ContentPage>

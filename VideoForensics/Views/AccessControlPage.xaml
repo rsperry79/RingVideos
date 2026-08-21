@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui" xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml" x:Class="VideoForensics.Views.AccessControlPage" Title="Access Control">
+    <VerticalStackLayout Padding="15">
+        <Label Text="Evidence Access Monitoring" FontSize="20" FontAttributes="Bold" />
+        <Frame BorderColor="#ff0000" CornerRadius="8" Padding="12"><Label Text="{Binding HighRiskCount, StringFormat='⚠ {0} High-Risk Alerts'}" FontSize="14" TextColor="#ff0000" FontAttributes="Bold" /></Frame>
+        <CollectionView ItemsSource="{Binding SuspiciousAccess}">
+            <CollectionView.ItemTemplate>
+                <DataTemplate>
+                    <Frame Margin="0,5" CornerRadius="8" BorderColor="#ff0000" Padding="12">
+                        <VerticalStackLayout Spacing="5">
+                            <Label Text="{Binding AnomalyType}" FontAttributes="Bold" TextColor="#ff0000" />
+                            <Label Text="{Binding Severity}" FontSize="11" TextColor="#999" />
+                            <Label Text="{Binding FailedAttemptCount, StringFormat='Failed Attempts: {0}'}" FontSize="10" TextColor="#666" />
+                            <Button Text="Investigate" FontSize="11" WidthRequest="100" Padding="3" BackgroundColor="#ff0000" />
+                        </VerticalStackLayout>
+                    </Frame>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+    </VerticalStackLayout>
+</ContentPage>
