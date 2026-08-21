@@ -7,9 +7,11 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 
 using Serilog;
 using Serilog.Events;
+using Spectre.Console;
 
 using Ring.Api;
 using Ring.Api.Interfaces;
@@ -19,6 +21,8 @@ using Ring.Api.Auth;
 using Ring.Api.Auth.Implementations;
 using Ring.Api.Common;
 using Ring.Api.Common.Interfaces;
+using Ring.Api.Forensics.Models;
+using Ring.Api.Forensics.Models.Reports;
 
 using Ring.Videos.Writers;
 using Ring.Videos.Logging;
@@ -96,8 +100,29 @@ namespace Ring.Videos
             return (filtered, level);
         }
 
+        private static ForensicsConfiguration LoadForensicsConfiguration()
+        {
+            var configPath = Path.Combine(GetDirectoryService().GetConfigDirectory(), "ForensicsConfig.json");
+
+            try
+            {
+                if (File.Exists(configPath))
+                {
+                    var json = File.ReadAllText(configPath);
+                    return JsonSerializer.Deserialize<ForensicsConfiguration>(json) ?? new ForensicsConfiguration();
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Warning("Failed to load forensics config from {path}: {error}", configPath, ex.Message);
+            }
+
+            return new ForensicsConfiguration();
+        }
+
         public static IHostBuilder CreateHostBuilder(string[] args)
         {
+            var forensicsConfig = LoadForensicsConfiguration();
 
             var builder = new HostBuilder()
                 .UseSerilog()
@@ -105,6 +130,7 @@ namespace Ring.Videos
                 {
                     services.AddHostedService<Worker>();
                     services.AddSingleton<StartArgs>(new StartArgs(args));
+                    services.AddSingleton(forensicsConfig);
 
                     // Platform-agnostic services
                     services.AddSingleton<IPlatformDirectoryService, PlatformDirectoryService>();
@@ -132,16 +158,20 @@ namespace Ring.Videos
                     services.AddSingleton<DownloadedEventRecordBuilder>();
                     services.AddSingleton<EventMetadataWriter>();
 
+                    // Raw API response logging
+                    services.AddSingleton<ApiRawResponseLogger>();
+
                     services.AddSingleton(sp =>
                     {
                         var directoryService = sp.GetRequiredService<IPlatformDirectoryService>();
+                        var filter = hostContext.Configuration.GetSection("Filter").Get<Filter>();
                         var ringVideoService = new RingVideoService(
                             sp.GetRequiredService<ILogger<RingVideoService>>(),
                             sp.GetRequiredService<IDownloadReporter>(),
                             sp.GetRequiredService<ICredentialStore>(),
                             directoryService.GetApplicationDataDirectory(),
                             hostContext.Configuration.GetSection("LocationNames").Get<Dictionary<string, string>>(),
-                            hostContext.Configuration.GetSection("Filter").Get<Filter>());
+                            filter);
 
                         // Wire up metadata writing callback
                         var builder = sp.GetRequiredService<DownloadedEventRecordBuilder>();
@@ -151,6 +181,13 @@ namespace Ring.Videos
                             var record = builder.Build(evt, filePath, DateTime.UtcNow.AddSeconds(-5), DateTime.UtcNow);
                             await writer.WriteEventRecordAsync(record, filePath);
                         };
+
+                        // Configure and subscribe raw API response logger
+                        var apiLogger = sp.GetRequiredService<ApiRawResponseLogger>();
+                        apiLogger.Configure(
+                            filter?.LogRawApiResponses ?? false,
+                            filter?.LogEventJsonResponses ?? true);
+                        apiLogger.Subscribe();
 
                         return ringVideoService;
                     });

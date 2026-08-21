@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 
 using Ring.Api;
 using Ring.Api.Models;
+using Ring.Api.Common.Interfaces;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -36,8 +37,10 @@ namespace Ring.Videos
         private static ConsoleWriter cw;
         private static IHostApplicationLifetime appLifetime;
         private static bool quitRequested = false;
+        private static ForensicsConfiguration forensicsConfig;
+        private static IPlatformDirectoryService directoryService;
 
-        public Worker(ILogger<Worker> log, IConfiguration config, RingVideoService ringVideoService, StartArgs sArgs, CommandHelper cmdHelper, ConsoleWriter consoleWriter, IHostApplicationLifetime appLifetime)
+        public Worker(ILogger<Worker> log, IConfiguration config, RingVideoService ringVideoService, StartArgs sArgs, CommandHelper cmdHelper, ConsoleWriter consoleWriter, IHostApplicationLifetime appLifetime, ForensicsConfiguration forensicsConfig, IPlatformDirectoryService directoryService)
         {
             Worker.log = log;
             Worker.ringVideoService = ringVideoService;
@@ -46,7 +49,8 @@ namespace Ring.Videos
             Worker.cmdHelper = cmdHelper;
             Worker.cw = consoleWriter;
             Worker.appLifetime = appLifetime;
-
+            Worker.forensicsConfig = forensicsConfig;
+            Worker.directoryService = directoryService;
         }
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
@@ -54,9 +58,15 @@ namespace Ring.Videos
             try
             {
                 rootCommand = cmdHelper.SetupCommands();
+
+                // If no arguments, show interactive menu
                 if (Worker.sArgs.Args.Length == 0)
                 {
-                    Worker.sArgs.Args = new string[] { "-h" };
+                    var configPath = Path.Combine(directoryService.GetConfigDirectory(), "ForensicsConfig.json");
+                    var menuManager = new MenuManager(forensicsConfig, configPath);
+                    await menuManager.ShowMainMenuAsync();
+                    appLifetime.StopApplication();
+                    return;
                 }
 
                 int val = await rootCommand.Parse(Worker.sArgs.Args).InvokeAsync();

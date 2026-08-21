@@ -2,29 +2,30 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <OutputType>Exe</OutputType>
         <TargetFramework>net10.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
 
-        <AssemblyName>VideoForensics</AssemblyName>
-        <RootNamespace>VideoForensics</RootNamespace>
+        <AssemblyName>VideoForensics.Common</AssemblyName>
+        <RootNamespace>VideoForensics.Common</RootNamespace>
         <Version>1.0.0</Version>
         <Authors>DV Victim Protection Team</Authors>
-        <Description>Desktop forensic evidence analysis application for DV victim protection</Description>
+        <Description>Shared library for VideoForensics forensic evidence analysis</Description>
         <Copyright>2026</Copyright>
         <PackageLicenseExpression>EPL-2.0</PackageLicenseExpression>
     </PropertyGroup>
 
     <ItemGroup>
         <PackageReference Include="Spectre.Console" Version="0.57.2" />
-        <PackageReference Include="System.CommandLine" Version="2.0.11" />
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\external\RingApi\src\api\Ring.Api.csproj" />
         <ProjectReference Include="..\external\RingApi\src\forensics\Ring.Api.Forensics.csproj" />
-        <ProjectReference Include="..\VideoForensics.Common\VideoForensics.Common.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="VideoForensics" />
+        <InternalsVisibleTo Include="VideoForensics.Tests" />
     </ItemGroup>
 
 </Project>

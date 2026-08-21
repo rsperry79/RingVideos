@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="Ring.Videos.Forensics.UI.Views.MainPage"
+             Title="Forensic Evidence">
+
+    <VerticalStackLayout Padding="20" Spacing="15">
+        <!-- Header -->
+        <Label Text="Forensic Evidence Management" Style="{StaticResource LargeLabelStyle}" />
+
+        <Label Text="DV Victim Protection - Evidence Extraction &amp; Analysis"
+               Style="{StaticResource SmallLabelStyle}"
+               Margin="0,-10,0,0" />
+
+        <!-- Status Bar -->
+        <Frame BorderColor="#E0E0E0" CornerRadius="8" HasShadow="True" Padding="15">
+            <VerticalStackLayout Spacing="5">
+                <Label Text="Status" FontAttributes="Bold" FontSize="14" />
+                <Label Text="{Binding StatusMessage}" FontSize="12" TextColor="#666666" />
+            </VerticalStackLayout>
+        </Frame>
+
+        <!-- Action Buttons -->
+        <HorizontalStackLayout Spacing="10">
+            <Button Text="Load Evidence"
+                    Command="{Binding LoadEvidenceCommand}"
+                    IsEnabled="{Binding IsLoading, Converter={StaticResource InvertedBoolConverter}}"
+                    WidthRequest="150" />
+            <Button Text="Refresh"
+                    WidthRequest="150"
+                    BackgroundColor="#F0F0F0"
+                    TextColor="#333333" />
+        </HorizontalStackLayout>
+
+        <!-- Evidence List -->
+        <Label Text="Evidence Items" FontAttributes="Bold" FontSize="16" />
+
+        <CollectionView ItemsSource="{Binding EvidenceList}"
+                       SelectionMode="Single"
+                       SelectionChangedCommand="{Binding ViewDetailsCommand}"
+                       SelectionChangedCommandParameter="{Binding SelectedItem, Source={RelativeSource Self}}"
+                       SelectionChanged="OnEvidenceSelected">
+            <CollectionView.ItemTemplate>
+                <DataTemplate>
+                    <Frame Margin="0,5" CornerRadius="8" HasShadow="True" Padding="15" BorderColor="#E0E0E0">
+                        <VerticalStackLayout Spacing="8">
+                            <!-- Evidence Header -->
+                            <HorizontalStackLayout Spacing="10">
+                                <Label Text="{Binding EvidenceId}"
+                                       FontAttributes="Bold"
+                                       FontSize="14"
+                                       WidthRequest="120" />
+                                <Label Text="{Binding EventType}"
+                                       FontSize="12"
+                                       TextColor="#666666"
+                                       WidthRequest="120" />
+                                <Label Text="{Binding ExtractionTimestamp, StringFormat='{0:g}'}"
+                                       FontSize="11"
+                                       TextColor="#999999" />
+                            </HorizontalStackLayout>
+
+                            <!-- Evidence Details -->
+                            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="5">
+                                <Label Grid.Row="0" Grid.Column="0" Text="Device:" FontSize="11" TextColor="#999999" />
+                                <Label Grid.Row="0" Grid.Column="1" Text="{Binding SourceDeviceId}" FontSize="11" />
+
+                                <Label Grid.Row="1" Grid.Column="0" Text="Event Time:" FontSize="11" TextColor="#999999" />
+                                <Label Grid.Row="1" Grid.Column="1" Text="{Binding EventTimestamp, StringFormat='{0:g}'}" FontSize="11" />
+
+                                <Label Grid.Row="2" Grid.Column="0" Text="Notes:" FontSize="11" TextColor="#999999" />
+                                <Label Grid.Row="2" Grid.Column="1" Text="{Binding Notes}" FontSize="11" />
+                            </Grid>
+
+                            <!-- Actions -->
+                            <HorizontalStackLayout Spacing="10" Margin="0,8,0,0">
+                                <Button Text="View" FontSize="12" WidthRequest="80" Padding="5" />
+                                <Button Text="Analyze" FontSize="12" WidthRequest="80" Padding="5" BackgroundColor="#4CAF50" />
+                                <Button Text="Delete" FontSize="12" WidthRequest="80" Padding="5" BackgroundColor="#f44336"
+                                        Command="{Binding Source={RelativeSource AncestorType={x:Type local:MainPage}}, Path=BindingContext.DeleteEvidenceCommand}"
+                                        CommandParameter="{Binding .}" />
+                            </HorizontalStackLayout>
+                        </VerticalStackLayout>
+                    </Frame>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+
+        <!-- Loading Indicator -->
+        <ActivityIndicator IsRunning="{Binding IsLoading}"
+                          IsVisible="{Binding IsLoading}"
+                          Color="#512BD4" />
+    </VerticalStackLayout>
+</ContentPage>

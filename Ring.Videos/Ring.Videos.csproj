@@ -40,6 +40,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\external\RingApi\src\api\Ring.Api.csproj" />
+    <ProjectReference Include="..\external\RingApi\src\forensics\Ring.Api.Forensics.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Ring.Videos.Tests" />
