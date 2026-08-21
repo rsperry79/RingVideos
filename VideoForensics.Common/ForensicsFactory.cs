@@ -1,6 +1,9 @@
 using System;
 using System.IO;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using Ring.Api.Common.Interfaces;
+using Ring.Api.Common;
 using VideoForensics.Common.Implementations;
 using VideoForensics.Common.Interfaces;
 
@@ -34,7 +37,10 @@ namespace VideoForensics.Common
 
         public static IVideoDownloadService CreateVideoDownloadService()
         {
-            return new VideoDownloadService();
+            var loggerFactory = new LoggerFactory();
+            var logger = loggerFactory.CreateLogger<VideoDownloadService>();
+            var directoryService = new PlatformDirectoryService();
+            return new VideoDownloadService(logger, directoryService);
         }
     }
 }
