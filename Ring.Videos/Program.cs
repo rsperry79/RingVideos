@@ -15,6 +15,10 @@ using Ring.Api;
 using Ring.Api.Interfaces;
 using Ring.Api.Clients;
 using Ring.Api.Models;
+using Ring.Api.Auth;
+using Ring.Api.Auth.Implementations;
+using Ring.Api.Common;
+using Ring.Api.Common.Interfaces;
 
 using Ring.Videos.Writers;
 using Ring.Videos.Logging;
@@ -23,9 +27,20 @@ namespace Ring.Videos
 {
     class Program
     {
-        public static string logFileBaseName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RingVideosData", "ringvideos.log");
-        public static string configFileName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RingVideosData", "RingVideosConfig.json");
+        private static IPlatformDirectoryService _directoryService;
+
+        public static string logFileBaseName =>
+            Path.Combine(GetDirectoryService().GetLogsDirectory(), "ringvideos.log");
+
+        public static string configFileName =>
+            Path.Combine(GetDirectoryService().GetConfigDirectory(), "RingVideosConfig.json");
         private static IConfigurationRoot Configuration;
+
+        private static IPlatformDirectoryService GetDirectoryService()
+        {
+            return _directoryService ??= new PlatformDirectoryService();
+        }
+
         public static void Main(string[] args)
         {
             ShutdownSignal.Register();
@@ -91,6 +106,11 @@ namespace Ring.Videos
                     services.AddHostedService<Worker>();
                     services.AddSingleton<StartArgs>(new StartArgs(args));
 
+                    // Platform-agnostic services
+                    services.AddSingleton<IPlatformDirectoryService, PlatformDirectoryService>();
+                    services.AddSingleton<ICredentialEncryption>(sp =>
+                        CredentialEncryptionFactory.CreateDefault());
+
                     // Ring API Session - underlying client
                     services.AddSingleton<Session>();
 
@@ -114,11 +134,12 @@ namespace Ring.Videos
 
                     services.AddSingleton(sp =>
                     {
+                        var directoryService = sp.GetRequiredService<IPlatformDirectoryService>();
                         var ringVideoService = new RingVideoService(
                             sp.GetRequiredService<ILogger<RingVideoService>>(),
                             sp.GetRequiredService<IDownloadReporter>(),
                             sp.GetRequiredService<ICredentialStore>(),
-                            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RingVideosData"),
+                            directoryService.GetApplicationDataDirectory(),
                             hostContext.Configuration.GetSection("LocationNames").Get<Dictionary<string, string>>(),
                             hostContext.Configuration.GetSection("Filter").Get<Filter>());
 

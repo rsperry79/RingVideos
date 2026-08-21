@@ -9,19 +9,30 @@ using Serilog.Core;
 using Serilog.Events;
 using Serilog.Formatting.Json;
 
+using Ring.Api.Common;
+using Ring.Api.Common.Interfaces;
+
 #nullable enable
 
 namespace Ring.Videos.Logging;
 
 public static class LoggerFactory
 {
-    private static readonly string LogDirectory = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "RingVideosData"
-    );
+    private static IPlatformDirectoryService _directoryService;
 
-    private static readonly string LogBasePath = Path.Combine(LogDirectory, "ringvideos");
-    private static readonly string JsonLogPath = Path.Combine(LogDirectory, "ringvideos-structured.jsonl");
+    private static string LogDirectory =>
+        GetDirectoryService().GetLogsDirectory();
+
+    private static string LogBasePath =>
+        Path.Combine(LogDirectory, "ringvideos");
+
+    private static string JsonLogPath =>
+        Path.Combine(LogDirectory, "ringvideos-structured.jsonl");
+
+    private static IPlatformDirectoryService GetDirectoryService()
+    {
+        return _directoryService ??= new PlatformDirectoryService();
+    }
 
     static LoggerFactory()
     {
