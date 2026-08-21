@@ -44,5 +44,8 @@ namespace VideoForensics.Common.Implementations
 
         [JsonPropertyName("logLevel")]
         public string LogLevel { get; set; } = "Information";
+
+        [JsonPropertyName("downloadLocation")]
+        public string DownloadLocation { get; set; } = "";
     }
 }

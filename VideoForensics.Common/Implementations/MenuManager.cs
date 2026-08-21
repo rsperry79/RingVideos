@@ -249,7 +249,13 @@ namespace VideoForensics.Common.Implementations
         private void DownloadVideos()
         {
             AnsiConsole.MarkupLine("[bold cyan]📹 Download Ring Videos[/]");
-            var outputPath = AnsiConsole.Ask<string>("[yellow]Enter output directory:[/]");
+
+            var outputPath = GetDownloadLocation();
+            if (string.IsNullOrEmpty(outputPath))
+            {
+                return;
+            }
+
             var daysBack = AnsiConsole.Ask<int>("[yellow]Download videos from last N days (default 7):[/]", 7);
 
             var startDate = DateTime.Now.AddDays(-daysBack);
@@ -258,6 +264,8 @@ namespace VideoForensics.Common.Implementations
             var result = _downloadService.DownloadVideosAsync(outputPath, startDate, endDate).Result;
             if (result)
             {
+                _forensicsConfig.DownloadLocation = outputPath;
+                SaveConfiguration();
                 AnsiConsole.MarkupLine("[green]✓ Videos saved with forensic metadata[/]");
             }
         }
@@ -265,7 +273,13 @@ namespace VideoForensics.Common.Implementations
         private void DownloadSnapshots()
         {
             AnsiConsole.MarkupLine("[bold cyan]📸 Download Ring Snapshots[/]");
-            var outputPath = AnsiConsole.Ask<string>("[yellow]Enter output directory:[/]");
+
+            var outputPath = GetDownloadLocation();
+            if (string.IsNullOrEmpty(outputPath))
+            {
+                return;
+            }
+
             var daysBack = AnsiConsole.Ask<int>("[yellow]Download snapshots from last N days (default 7):[/]", 7);
 
             var startDate = DateTime.Now.AddDays(-daysBack);
@@ -274,8 +288,43 @@ namespace VideoForensics.Common.Implementations
             var result = _downloadService.DownloadSnapshotsAsync(outputPath, startDate, endDate).Result;
             if (result)
             {
+                _forensicsConfig.DownloadLocation = outputPath;
+                SaveConfiguration();
                 AnsiConsole.MarkupLine("[green]✓ Snapshots saved with forensic metadata[/]");
             }
+        }
+
+        private string GetDownloadLocation()
+        {
+            if (!string.IsNullOrEmpty(_forensicsConfig.DownloadLocation) &&
+                Directory.Exists(_forensicsConfig.DownloadLocation))
+            {
+                AnsiConsole.MarkupLine("[cyan]Using saved location:[/] {0}", _forensicsConfig.DownloadLocation);
+                var useSaved = AnsiConsole.Confirm("[yellow]Use this location?[/]", true);
+                if (useSaved)
+                {
+                    return _forensicsConfig.DownloadLocation;
+                }
+            }
+
+            AnsiConsole.MarkupLine("[yellow]No saved download location[/]");
+            var newPath = AnsiConsole.Ask<string>("[yellow]Enter output directory for downloads:[/]");
+
+            if (!string.IsNullOrEmpty(newPath))
+            {
+                try
+                {
+                    Directory.CreateDirectory(newPath);
+                    return newPath;
+                }
+                catch (Exception ex)
+                {
+                    AnsiConsole.MarkupLine("[red]✗ Failed to create directory: {0}[/]", ex.Message);
+                    return null;
+                }
+            }
+
+            return null;
         }
 
         private void ShowConfigurationMenu()
@@ -292,6 +341,7 @@ namespace VideoForensics.Common.Implementations
                             "PII Redaction Settings",
                             "Key Storage Configuration",
                             "Retention Policy",
+                            "Download Location",
                             "Logging Level",
                             "Back to Main Menu"
                         ));
@@ -309,6 +359,9 @@ namespace VideoForensics.Common.Implementations
                         break;
                     case "Retention Policy":
                         ConfigureRetentionPolicy();
+                        break;
+                    case "Download Location":
+                        ConfigureDownloadLocation();
                         break;
                     case "Logging Level":
                         ConfigureLoggingLevel();
@@ -449,6 +502,36 @@ namespace VideoForensics.Common.Implementations
             {
                 _forensicsConfig.RetentionDaysDefault = days;
                 AnsiConsole.MarkupLine("[green]✓ Retention period set to {0} days[/]", days);
+            }
+        }
+
+        private void ConfigureDownloadLocation()
+        {
+            AnsiConsole.MarkupLine("[bold cyan]📁 Download Location[/]");
+
+            if (!string.IsNullOrEmpty(_forensicsConfig.DownloadLocation))
+            {
+                AnsiConsole.MarkupLine("[yellow]Current location:[/] {0}", _forensicsConfig.DownloadLocation);
+            }
+            else
+            {
+                AnsiConsole.MarkupLine("[yellow]No location set[/]");
+            }
+
+            var newPath = AnsiConsole.Ask<string>("[yellow]Enter new download directory (or press Enter to keep current):[/]", _forensicsConfig.DownloadLocation ?? "");
+
+            if (!string.IsNullOrEmpty(newPath))
+            {
+                try
+                {
+                    Directory.CreateDirectory(newPath);
+                    _forensicsConfig.DownloadLocation = newPath;
+                    AnsiConsole.MarkupLine("[green]✓ Download location set to {0}[/]", newPath);
+                }
+                catch (Exception ex)
+                {
+                    AnsiConsole.MarkupLine("[red]✗ Failed to set location: {0}[/]", ex.Message);
+                }
             }
         }
 

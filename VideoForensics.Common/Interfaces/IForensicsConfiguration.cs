@@ -17,6 +17,7 @@ namespace VideoForensics.Common.Interfaces
         string ReportOutputFormat { get; set; }
         string ReportsDirectory { get; set; }
         string LogLevel { get; set; }
+        string DownloadLocation { get; set; }
     }
 
     public enum RedactionLevel
