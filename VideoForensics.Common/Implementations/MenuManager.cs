@@ -12,11 +12,13 @@ namespace VideoForensics.Common.Implementations
     {
         private readonly IForensicsConfiguration _forensicsConfig;
         private readonly string _configPath;
+        private readonly IVideoDownloadService _downloadService;
 
-        public MenuManager(IForensicsConfiguration config, string configPath)
+        public MenuManager(IForensicsConfiguration config, string configPath, IVideoDownloadService downloadService)
         {
             _forensicsConfig = config;
             _configPath = configPath;
+            _downloadService = downloadService;
         }
 
         public async Task ShowMainMenuAsync()
@@ -40,6 +42,7 @@ namespace VideoForensics.Common.Implementations
                             "Signal Anomalies",
                             "Access Control Monitoring",
                             "Chain of Custody",
+                            "Video Downloads",
                             "Configuration",
                             "Exit"
                         ));
@@ -60,6 +63,9 @@ namespace VideoForensics.Common.Implementations
                         break;
                     case "Chain of Custody":
                         ShowChainOfCustody();
+                        break;
+                    case "Video Downloads":
+                        ShowVideoDownloads();
                         break;
                     case "Configuration":
                         ShowConfigurationMenu();
@@ -189,6 +195,87 @@ namespace VideoForensics.Common.Implementations
             table.AddRow("COC-003", "Evidence Custodian", "Stored", "2026-08-20 14:00", "[green]✓ Verified[/]");
 
             AnsiConsole.Write(table);
+        }
+
+        private void ShowVideoDownloads()
+        {
+            AnsiConsole.MarkupLine("[bold cyan]📥 Video Downloads[/]");
+
+            var choice = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("Select download option")
+                    .HighlightStyle("green")
+                    .AddChoices(
+                        "Authenticate Ring Account",
+                        "Download Videos",
+                        "Download Snapshots",
+                        "View Status",
+                        "Back"
+                    ));
+
+            switch (choice)
+            {
+                case "Authenticate Ring Account":
+                    AuthenticateRingAccount();
+                    break;
+                case "Download Videos":
+                    DownloadVideos();
+                    break;
+                case "Download Snapshots":
+                    DownloadSnapshots();
+                    break;
+                case "View Status":
+                    AnsiConsole.MarkupLine("[yellow]Status:[/] {0}", _downloadService.GetDownloadStatus());
+                    break;
+            }
+        }
+
+        private void AuthenticateRingAccount()
+        {
+            AnsiConsole.MarkupLine("[bold cyan]🔐 Ring Account Authentication[/]");
+            var username = AnsiConsole.Ask<string>("[yellow]Enter email address:[/]");
+            var password = AnsiConsole.Ask<string>("[yellow]Enter password (will not be echoed):[/]", "");
+
+            if (!string.IsNullOrEmpty(username) && !string.IsNullOrEmpty(password))
+            {
+                var result = _downloadService.AuthenticateAsync(username, password).Result;
+                if (result)
+                {
+                    AnsiConsole.MarkupLine("[green]✓ Credentials saved securely[/]");
+                }
+            }
+        }
+
+        private void DownloadVideos()
+        {
+            AnsiConsole.MarkupLine("[bold cyan]📹 Download Ring Videos[/]");
+            var outputPath = AnsiConsole.Ask<string>("[yellow]Enter output directory:[/]");
+            var daysBack = AnsiConsole.Ask<int>("[yellow]Download videos from last N days (default 7):[/]", 7);
+
+            var startDate = DateTime.Now.AddDays(-daysBack);
+            var endDate = DateTime.Now;
+
+            var result = _downloadService.DownloadVideosAsync(outputPath, startDate, endDate).Result;
+            if (result)
+            {
+                AnsiConsole.MarkupLine("[green]✓ Videos saved with forensic metadata[/]");
+            }
+        }
+
+        private void DownloadSnapshots()
+        {
+            AnsiConsole.MarkupLine("[bold cyan]📸 Download Ring Snapshots[/]");
+            var outputPath = AnsiConsole.Ask<string>("[yellow]Enter output directory:[/]");
+            var daysBack = AnsiConsole.Ask<int>("[yellow]Download snapshots from last N days (default 7):[/]", 7);
+
+            var startDate = DateTime.Now.AddDays(-daysBack);
+            var endDate = DateTime.Now;
+
+            var result = _downloadService.DownloadSnapshotsAsync(outputPath, startDate, endDate).Result;
+            if (result)
+            {
+                AnsiConsole.MarkupLine("[green]✓ Snapshots saved with forensic metadata[/]");
+            }
         }
 
         private void ShowConfigurationMenu()

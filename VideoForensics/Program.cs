@@ -22,9 +22,10 @@ namespace VideoForensics
                 return;
             }
 
-            // Load configuration and create menu
+            // Load configuration and create services
             var config = ForensicsFactory.LoadConfiguration(configPath);
-            var menuManager = ForensicsFactory.CreateMenuManager(config, configPath);
+            var downloadService = ForensicsFactory.CreateVideoDownloadService();
+            var menuManager = ForensicsFactory.CreateMenuManager(config, configPath, downloadService);
 
             // Show interactive menu
             await menuManager.ShowMainMenuAsync();

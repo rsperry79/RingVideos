@@ -27,9 +27,14 @@ namespace VideoForensics.Common
             return new ForensicsConfiguration();
         }
 
-        public static IMenuManager CreateMenuManager(IForensicsConfiguration config, string configPath)
+        public static IMenuManager CreateMenuManager(IForensicsConfiguration config, string configPath, IVideoDownloadService downloadService)
         {
-            return new MenuManager(config, configPath);
+            return new MenuManager(config, configPath, downloadService);
+        }
+
+        public static IVideoDownloadService CreateVideoDownloadService()
+        {
+            return new VideoDownloadService();
         }
     }
 }
