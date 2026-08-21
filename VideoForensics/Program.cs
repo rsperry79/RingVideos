@@ -32,8 +32,8 @@ class Program
                         "View Evidence",
                         "Generate Reports",
                         "Signal Anomalies",
-                        "Chain of Custody",
                         "Access Control",
+                        "Open Ring.Videos (Custody & Downloads)",
                         "Exit"
                     ));
 
@@ -48,11 +48,11 @@ class Program
                 case "Signal Anomalies":
                     ShowSignalAnomalies();
                     break;
-                case "Chain of Custody":
-                    ShowChainOfCustody();
-                    break;
                 case "Access Control":
                     ShowAccessControl();
+                    break;
+                case "Open Ring.Videos (Custody & Downloads)":
+                    LaunchRingVideos();
                     break;
                 case "Exit":
                     return;
@@ -120,23 +120,6 @@ class Program
         AnsiConsole.Write(list);
     }
 
-    static void ShowChainOfCustody()
-    {
-        AnsiConsole.MarkupLine("[bold cyan]🔐 Chain of Custody Audit[/]");
-        var table = new Spectre.Console.Table();
-        table.AddColumn("Handler");
-        table.AddColumn("Action");
-        table.AddColumn("Time");
-        table.AddColumn("Status");
-
-        table.AddRow("Officer Smith", "Reception", "2026-08-20 14:30", "[green]✓[/]");
-        table.AddRow("Officer Johnson", "Analysis", "2026-08-20 16:45", "[green]✓[/]");
-        table.AddRow("Lab Tech Brown", "Validation", "2026-08-20 18:20", "[green]✓[/]");
-
-        AnsiConsole.Write(table);
-        AnsiConsole.MarkupLine("\n[green]✓ Integrity Verified[/] - No tampering detected");
-    }
-
     static void ShowAccessControl()
     {
         AnsiConsole.MarkupLine("[bold cyan]🚨 Evidence Access Monitoring[/]");
@@ -153,5 +136,24 @@ class Program
 
         AnsiConsole.Write(table);
         AnsiConsole.MarkupLine("\n[yellow]Recommendation:[/] Review access logs for potential evidence tampering");
+    }
+
+    static void ShowChainOfCustody()
+    {
+        AnsiConsole.MarkupLine("[yellow]⚠ Chain of Custody management has been moved to Ring.Videos[/]");
+        AnsiConsole.MarkupLine("[cyan]Use 'Open Ring.Videos' from the main menu to access custody tracking and video downloads[/]");
+    }
+
+    static void LaunchRingVideos()
+    {
+        AnsiConsole.MarkupLine("[green]✓ Ring.Videos provides:[/]");
+        AnsiConsole.MarkupLine("  • Video downloads from Ring devices");
+        AnsiConsole.MarkupLine("  • Chain of custody tracking");
+        AnsiConsole.MarkupLine("  • Device authentication");
+        AnsiConsole.MarkupLine("  • Video processing and storage");
+        AnsiConsole.MarkupLine("");
+        AnsiConsole.MarkupLine("[yellow]To launch Ring.Videos:[/]");
+        AnsiConsole.MarkupLine("  dotnet run --project Ring.Videos");
+        AnsiConsole.MarkupLine("");
     }
 }

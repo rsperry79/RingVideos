@@ -18,9 +18,9 @@ public static class DemoMode
         AnsiConsole.MarkupLine("");
         ShowSignalAnomalies();
         AnsiConsole.MarkupLine("");
-        ShowChainOfCustody();
-        AnsiConsole.MarkupLine("");
         ShowAccessControl();
+        AnsiConsole.MarkupLine("");
+        ShowRingVideosIntegration();
     }
 
     static void ShowEvidence()
@@ -82,24 +82,19 @@ public static class DemoMode
         AnsiConsole.MarkupLine("  └─ Duration: 25 minutes | Loss: 25%");
     }
 
-    static void ShowChainOfCustody()
+    static void ShowRingVideosIntegration()
     {
-        AnsiConsole.MarkupLine("[bold cyan]🔐 CHAIN OF CUSTODY AUDIT[/]");
-
-        var table = new Table();
-        table.AddColumn("[bold]Handler[/]");
-        table.AddColumn("[bold]Action[/]");
-        table.AddColumn("[bold]Time[/]");
-        table.AddColumn("[bold]Status[/]");
-        table.Border = TableBorder.Rounded;
-
-        table.AddRow("Officer Smith", "Reception", "2026-08-20 14:30", "[green]✓ VERIFIED[/]");
-        table.AddRow("Officer Johnson", "Analysis", "2026-08-20 16:45", "[green]✓ VERIFIED[/]");
-        table.AddRow("Lab Tech Brown", "Validation", "2026-08-20 18:20", "[green]✓ VERIFIED[/]");
-
-        AnsiConsole.Write(table);
-        AnsiConsole.MarkupLine("\n[green]✓ INTEGRITY VERIFIED[/] - No tampering detected");
-        AnsiConsole.MarkupLine("[green]✓ MERKLE CHAIN VERIFIED[/] - All entries cryptographically signed");
+        AnsiConsole.MarkupLine("[bold cyan]🔗 RING.VIDEOS INTEGRATION[/]");
+        var panel = new Panel("[green]✓ Chain of Custody[/] - Managed by Ring.Videos\n[green]✓ Video Downloads[/] - Ring device management\n[green]✓ Device Authentication[/] - Secure access\n[green]✓ Evidence Storage[/] - Forensic preservation")
+        {
+            Header = new PanelHeader("[bold green]Linked Systems[/]"),
+            Border = BoxBorder.Rounded
+        };
+        AnsiConsole.Write(panel);
+        AnsiConsole.MarkupLine("\n[yellow]Launch Ring.Videos from VideoForensics menu to manage:[/]");
+        AnsiConsole.MarkupLine("  • Chain of custody tracking with cryptographic verification");
+        AnsiConsole.MarkupLine("  • Evidence video downloads and processing");
+        AnsiConsole.MarkupLine("  • Device authentication and authorization");
     }
 
     static void ShowAccessControl()
