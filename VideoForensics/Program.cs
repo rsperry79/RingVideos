@@ -9,6 +9,12 @@ class Program
 {
     static void Main(string[] args)
     {
+        // Run demo mode if launched with --demo flag
+        if (args.Length > 0 && args[0] == "--demo")
+        {
+            DemoMode.RunDemo();
+            return;
+        }
         AnsiConsole.MarkupLine("[bold green]═══════════════════════════════════════[/]");
         AnsiConsole.MarkupLine("[bold green]    VideoForensics - Evidence Analysis[/]");
         AnsiConsole.MarkupLine("[bold green]  DV Victim Protection & Tamper Detection[/]");
