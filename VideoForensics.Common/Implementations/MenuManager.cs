@@ -315,6 +315,9 @@ namespace VideoForensics.Common.Implementations
                 try
                 {
                     Directory.CreateDirectory(newPath);
+                    _forensicsConfig.DownloadLocation = newPath;
+                    SaveConfiguration();
+                    AnsiConsole.MarkupLine("[green]✓ Download location saved[/]");
                     return newPath;
                 }
                 catch (Exception ex)

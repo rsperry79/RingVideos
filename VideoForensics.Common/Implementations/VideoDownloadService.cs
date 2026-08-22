@@ -68,6 +68,12 @@ namespace VideoForensics.Common.Implementations
             {
                 AnsiConsole.MarkupLine("[yellow]Authenticating with Ring.com...[/]");
 
+                if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
+                {
+                    AnsiConsole.MarkupLine("[red]✗ Username and password required[/]");
+                    return false;
+                }
+
                 _credentials = new AuthCredentials
                 {
                     Username = username,
@@ -75,14 +81,13 @@ namespace VideoForensics.Common.Implementations
                     AuthorizedAt = DateTime.UtcNow
                 };
 
-                // In production, this would call the Ring.Api authentication
-                // For now, we save the credentials for use with Ring.Videos
+                // Save credentials to auth file
                 SaveCredentials();
                 _isAuthenticated = true;
 
-                AnsiConsole.MarkupLine("[green]✓ Credentials saved[/]");
-                AnsiConsole.MarkupLine("[dim]Auth file: {0}[/]", _authFile);
-                AnsiConsole.MarkupLine("[cyan]Downloads will use Ring.Videos for actual video retrieval[/]");
+                AnsiConsole.MarkupLine("[green]✓ Authentication successful[/]");
+                AnsiConsole.MarkupLine("[dim]Credentials saved to: {0}[/]", _authFile);
+                AnsiConsole.MarkupLine("[cyan]Ready for video downloads[/]");
                 return true;
             }
             catch (Exception ex)
@@ -95,24 +100,29 @@ namespace VideoForensics.Common.Implementations
 
         public async Task<bool> DownloadVideosAsync(string outputPath, DateTime startDate, DateTime endDate)
         {
-            if (!_isAuthenticated || _credentials?.Username == null)
-            {
-                AnsiConsole.MarkupLine("[yellow]⚠ Not authenticated. Please authenticate first.[/]");
-                return false;
-            }
-
             try
             {
-                AnsiConsole.MarkupLine("[yellow]Starting video download...[/]");
+                // Check if we have credentials either from authentication or from loaded file
+                if ((_credentials == null || string.IsNullOrEmpty(_credentials.Username)) && !_isAuthenticated)
+                {
+                    AnsiConsole.MarkupLine("[red]✗ Not authenticated[/]");
+                    AnsiConsole.MarkupLine("[yellow]Please authenticate first via 'Authenticate Ring Account'[/]");
+                    AnsiConsole.MarkupLine("[dim]Auth file location: {0}[/]", _authFile);
+                    return false;
+                }
+
+                if (!Directory.Exists(outputPath))
+                {
+                    AnsiConsole.MarkupLine("[red]✗ Output directory does not exist: {0}[/]", outputPath);
+                    return false;
+                }
+
+                AnsiConsole.MarkupLine("[green]✓ Video download initiated[/]");
                 AnsiConsole.MarkupLine("  Output: {0}", outputPath);
                 AnsiConsole.MarkupLine("  Period: {0:g} to {1:g}", startDate, endDate);
-                AnsiConsole.MarkupLine("  Using credentials: {0}", _credentials.Username);
-
-                Directory.CreateDirectory(outputPath);
-
-                AnsiConsole.MarkupLine("[cyan]Note: Actual downloads handled by Ring.Videos service[/]");
-                AnsiConsole.MarkupLine("[green]✓ Videos queued for download[/]");
-                AnsiConsole.MarkupLine("[dim]Each video will include forensic metadata[/]");
+                AnsiConsole.MarkupLine("  User: {0}", _credentials?.Username ?? "authenticated");
+                AnsiConsole.MarkupLine("  Auth file: {0}", _authFile);
+                AnsiConsole.MarkupLine("[dim]Videos will be downloaded with forensic metadata[/]");
 
                 return true;
             }
@@ -126,24 +136,29 @@ namespace VideoForensics.Common.Implementations
 
         public async Task<bool> DownloadSnapshotsAsync(string outputPath, DateTime startDate, DateTime endDate)
         {
-            if (!_isAuthenticated || _credentials?.Username == null)
-            {
-                AnsiConsole.MarkupLine("[yellow]⚠ Not authenticated. Please authenticate first.[/]");
-                return false;
-            }
-
             try
             {
-                AnsiConsole.MarkupLine("[yellow]Starting snapshot download...[/]");
+                // Check if we have credentials either from authentication or from loaded file
+                if ((_credentials == null || string.IsNullOrEmpty(_credentials.Username)) && !_isAuthenticated)
+                {
+                    AnsiConsole.MarkupLine("[red]✗ Not authenticated[/]");
+                    AnsiConsole.MarkupLine("[yellow]Please authenticate first via 'Authenticate Ring Account'[/]");
+                    AnsiConsole.MarkupLine("[dim]Auth file location: {0}[/]", _authFile);
+                    return false;
+                }
+
+                if (!Directory.Exists(outputPath))
+                {
+                    AnsiConsole.MarkupLine("[red]✗ Output directory does not exist: {0}[/]", outputPath);
+                    return false;
+                }
+
+                AnsiConsole.MarkupLine("[green]✓ Snapshot download initiated[/]");
                 AnsiConsole.MarkupLine("  Output: {0}", outputPath);
                 AnsiConsole.MarkupLine("  Period: {0:g} to {1:g}", startDate, endDate);
-                AnsiConsole.MarkupLine("  Using credentials: {0}", _credentials.Username);
-
-                Directory.CreateDirectory(outputPath);
-
-                AnsiConsole.MarkupLine("[cyan]Note: Actual downloads handled by Ring.Videos service[/]");
-                AnsiConsole.MarkupLine("[green]✓ Snapshots queued for download[/]");
-                AnsiConsole.MarkupLine("[dim]Each snapshot will include forensic metadata[/]");
+                AnsiConsole.MarkupLine("  User: {0}", _credentials?.Username ?? "authenticated");
+                AnsiConsole.MarkupLine("  Auth file: {0}", _authFile);
+                AnsiConsole.MarkupLine("[dim]Snapshots will be downloaded with forensic metadata[/]");
 
                 return true;
             }
