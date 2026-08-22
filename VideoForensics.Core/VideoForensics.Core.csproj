@@ -22,9 +22,9 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\external\RingApi\src\forensics\Ring.Api.Forensics.csproj" />
-        <ProjectReference Include="..\external\RingApi\src\core\Ring.Api.Core.csproj" />
-        <ProjectReference Include="..\external\RingApi\src\common\Ring.Api.Common.csproj" />
+        <ProjectReference Include="..\external\RingApi\src\providers\ring\forensics\Ring.Api.Forensics.csproj" />
+        <ProjectReference Include="..\external\RingApi\src\providers\ring\core\Ring.Api.Core.csproj" />
+        <ProjectReference Include="..\external\RingApi\src\providers\ring\common\Ring.Api.Common.csproj" />
     </ItemGroup>
 
     <ItemGroup>

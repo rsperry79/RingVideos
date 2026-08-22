@@ -2,8 +2,8 @@ using System;
 using System.IO;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using Ring.Api.Common.Interfaces;
-using Ring.Api.Common;
+using VideoForensics.Providers.Ring.Common.Interfaces;
+using VideoForensics.Providers.Ring.Common;
 using VideoForensics.Core.Implementations;
 using VideoForensics.Core.Interfaces;
 
