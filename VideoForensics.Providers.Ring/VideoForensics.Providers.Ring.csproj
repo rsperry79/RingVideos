@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+
+        <AssemblyName>VideoForensics.Providers.Ring</AssemblyName>
+        <RootNamespace>VideoForensics.Providers.Ring</RootNamespace>
+        <Version>1.0.0</Version>
+        <Authors>DV Victim Protection Team</Authors>
+        <Description>Ring.com provider implementation for VideoForensics using IVideoProvider abstraction</Description>
+        <Copyright>2026</Copyright>
+        <PackageLicenseExpression>EPL-2.0</PackageLicenseExpression>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.11" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\VideoForensics.Providers.Core\VideoForensics.Providers.Core.csproj" />
+        <ProjectReference Include="..\VideoForensics.Providers.Common\VideoForensics.Providers.Common.csproj" />
+        <ProjectReference Include="..\external\RingApi\src\providers\ring\forensics\Ring.Api.Forensics.csproj" />
+        <ProjectReference Include="..\external\RingApi\src\providers\ring\core\Ring.Api.Core.csproj" />
+        <ProjectReference Include="..\external\RingApi\src\providers\ring\common\Ring.Api.Common.csproj" />
+        <ProjectReference Include="..\external\RingApi\src\providers\ring\auth\Ring.Api.Auth.csproj" />
+    </ItemGroup>
+
+</Project>
