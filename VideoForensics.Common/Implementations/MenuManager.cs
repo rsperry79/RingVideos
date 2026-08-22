@@ -296,18 +296,27 @@ namespace VideoForensics.Common.Implementations
 
         private string GetDownloadLocation()
         {
-            if (!string.IsNullOrEmpty(_forensicsConfig.DownloadLocation) &&
-                Directory.Exists(_forensicsConfig.DownloadLocation))
+            // Use saved location if it exists and is accessible
+            if (!string.IsNullOrEmpty(_forensicsConfig.DownloadLocation))
             {
-                AnsiConsole.MarkupLine("[cyan]Using saved location:[/] {0}", _forensicsConfig.DownloadLocation);
-                var useSaved = AnsiConsole.Confirm("[yellow]Use this location?[/]", true);
-                if (useSaved)
+                try
                 {
+                    if (!Directory.Exists(_forensicsConfig.DownloadLocation))
+                    {
+                        Directory.CreateDirectory(_forensicsConfig.DownloadLocation);
+                    }
+                    AnsiConsole.MarkupLine("[cyan]Download location:[/] {0}", _forensicsConfig.DownloadLocation);
+                    AnsiConsole.MarkupLine("[dim](Change via Configuration → Download Location)[/]");
                     return _forensicsConfig.DownloadLocation;
+                }
+                catch (Exception ex)
+                {
+                    AnsiConsole.MarkupLine("[yellow]⚠ Saved location not accessible: {0}[/]", ex.Message);
                 }
             }
 
-            AnsiConsole.MarkupLine("[yellow]No saved download location[/]");
+            // Ask for new location if none saved or saved one failed
+            AnsiConsole.MarkupLine("[yellow]No download location configured[/]");
             var newPath = AnsiConsole.Ask<string>("[yellow]Enter output directory for downloads:[/]");
 
             if (!string.IsNullOrEmpty(newPath))
@@ -317,7 +326,7 @@ namespace VideoForensics.Common.Implementations
                     Directory.CreateDirectory(newPath);
                     _forensicsConfig.DownloadLocation = newPath;
                     SaveConfiguration();
-                    AnsiConsole.MarkupLine("[green]✓ Download location saved[/]");
+                    AnsiConsole.MarkupLine("[green]✓ Location saved and configured[/]");
                     return newPath;
                 }
                 catch (Exception ex)
