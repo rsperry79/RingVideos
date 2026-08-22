@@ -2,8 +2,8 @@ using System;
 using System.IO;
 using System.Threading.Tasks;
 using Spectre.Console;
-using VideoForensics.Common;
-using VideoForensics.Common.Interfaces;
+using VideoForensics.Core;
+using VideoForensics.Core.Interfaces;
 
 namespace VideoForensics
 {

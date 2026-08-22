@@ -24,7 +24,7 @@
     <ItemGroup>
         <ProjectReference Include="..\external\RingApi\src\api\Ring.Api.csproj" />
         <ProjectReference Include="..\external\RingApi\src\forensics\Ring.Api.Forensics.csproj" />
-        <ProjectReference Include="..\VideoForensics.Common\VideoForensics.Common.csproj" />
+        <ProjectReference Include="..\VideoForensics.Core\VideoForensics.Core.csproj" />
     </ItemGroup>
 
 </Project>

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+
+        <AssemblyName>VideoForensics.Core</AssemblyName>
+        <RootNamespace>VideoForensics.Core</RootNamespace>
+        <Version>1.0.0</Version>
+        <Authors>DV Victim Protection Team</Authors>
+        <Description>Core library for VideoForensics forensic evidence analysis with public-facing interfaces</Description>
+        <Copyright>2026</Copyright>
+        <PackageLicenseExpression>EPL-2.0</PackageLicenseExpression>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Spectre.Console" Version="0.57.2" />
+        <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.11" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\external\RingApi\src\forensics\Ring.Api.Forensics.csproj" />
+        <ProjectReference Include="..\external\RingApi\src\core\Ring.Api.Core.csproj" />
+        <ProjectReference Include="..\external\RingApi\src\common\Ring.Api.Common.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="VideoForensics" />
+        <InternalsVisibleTo Include="VideoForensics.Core.Tests" />
+    </ItemGroup>
+
+</Project>
