@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using Spectre.Console;
 using VideoForensics.Core.Interfaces;
 
-namespace VideoForensics.Core.Implementations
+namespace VideoForensics
 {
     public class MenuManager : IMenuManager
     {

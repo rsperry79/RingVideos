@@ -25,9 +25,9 @@ namespace VideoForensics
             // Load configuration and create services
             var config = ForensicsFactory.LoadConfiguration(configPath);
             var downloadService = ForensicsFactory.CreateVideoDownloadService();
-            var menuManager = ForensicsFactory.CreateMenuManager(config, configPath, downloadService);
 
-            // Show interactive menu
+            // Create and show UI
+            var menuManager = new MenuManager(config, configPath, downloadService);
             await menuManager.ShowMainMenuAsync();
         }
     }

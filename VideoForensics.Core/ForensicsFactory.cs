@@ -30,11 +30,6 @@ namespace VideoForensics.Core
             return new ForensicsConfiguration();
         }
 
-        public static IMenuManager CreateMenuManager(IForensicsConfiguration config, string configPath, IVideoDownloadService downloadService)
-        {
-            return new MenuManager(config, configPath, downloadService);
-        }
-
         public static IVideoDownloadService CreateVideoDownloadService()
         {
             var loggerFactory = new LoggerFactory();

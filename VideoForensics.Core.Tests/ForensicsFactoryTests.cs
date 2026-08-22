@@ -100,22 +100,6 @@ namespace VideoForensics.Core.Tests
             Assert.NotSame(service1, service2);
         }
 
-        [Fact]
-        public void CreateMenuManager_ReturnsValidManager()
-        {
-            // Arrange
-            var config = new ForensicsConfiguration();
-            var configPath = Path.Combine(_testConfigDir, "config.json");
-            var downloadService = ForensicsFactory.CreateVideoDownloadService();
-
-            // Act
-            var manager = ForensicsFactory.CreateMenuManager(config, configPath, downloadService);
-
-            // Assert
-            Assert.NotNull(manager);
-            Assert.IsAssignableFrom<IMenuManager>(manager);
-        }
-
 
         public void Dispose()
         {
